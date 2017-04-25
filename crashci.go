@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -13,8 +14,8 @@ const maxParallelRounds = 100
 const maxPlayersPerRound = 5
 const minPlayersPerRound = 1
 const maxRoundWaitingTimeSec = 5
-const maxRoundRunningTimeSec = 60
-const framesPerSecond = 2
+const maxRoundRunningTimeSec = 600
+const framesPerSecond = 4
 const mapWidth = 179
 const mapHeight = 38
 const nameTableWidth = 30
@@ -23,6 +24,8 @@ const horizontalCarWidth = 2
 const horizontalCarHeight = 2
 const verticalCarWidth = 2
 const verticalCarHeight = 2
+
+const setColor = "\x1b[%dm"
 
 // States of the round
 const (
@@ -40,11 +43,29 @@ const (
 	DOWN
 )
 
+// Car Borders
+const (
+	LEFTUP = 0 + iota
+	RIGHTUP
+	RIGHTDOWN
+	LEFTDOWN
+)
+
 // Damage points
 const (
 	BACK = 1 + iota
 	FRONT
 	SIDE
+)
+
+// Colors
+const (
+	RESET = 0
+	RED   = 31 + iota
+	GREEN
+	YELLOW
+	BLUE
+	MAGENTA
 )
 
 var cars = [][]byte{
@@ -53,7 +74,9 @@ var cars = [][]byte{
 	[]byte("^^\n__"),
 	[]byte("--\nvv")}
 
-var clear = []byte{27, 91, 50, 74, 27, 91, 72}
+//var clear = []byte{27, 91, 50, 74, 27, 91, 72}
+var home = []byte{27, 91, 72}
+var clear = []byte{27, 91, 50, 74}
 
 type Config struct {
 	Log *log.Logger
@@ -63,8 +86,12 @@ type Point struct {
 	X, Y int
 }
 
+type Rectangle struct {
+	Points [4]Point // LeftUP, RightUP, RightDOWN, LeftDOWN
+}
+
 type Car struct {
-	Position  Point
+	Borders   Rectangle
 	Direction int
 	Speed     int64
 }
@@ -96,36 +123,42 @@ func generateBot() Player {
 	return Player{Name: fmt.Sprintf("Bot %d", rand.Intn(100)+1), Health: 100, Bot: true, Car: Car{Speed: 1}}
 }
 
-func (p *Player) checkBestRoundForPlayer(round chan Round) {
-	for r := range round {
-		if len(r.Players) < maxPlayersPerRound {
-			p.initPlayer(len(r.Players))
-			r.Players = append(r.Players, *p)
-			round <- r
-			break
-		} else {
-			round <- r
-		}
+func initTelnet(conn net.Conn) error {
+	// https://tools.ietf.org/html/rfc854
+	telnetOptions := []byte{
+		255, 253, 34, // IAC DO LINEMODE
+		255, 250, 34, 1, 0, 255, 240, // IAC SB LINEMODE MODE 0 IAC SE
+		255, 251, 1, // IAC WILL ECHO
 	}
+	_, err := conn.Write(telnetOptions)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (p *Player) initPlayer(id int) {
-	switch id {
-	case 0:
-		p.Car.Position.X, p.Car.Position.Y = 1, 1
-		p.Car.Direction = RIGHT
-	case 1:
-		p.Car.Position.X, p.Car.Position.Y = mapWidth-nameTableWidth-verticalCarWidth, 1
-		p.Car.Direction = DOWN
-	case 2:
-		p.Car.Position.X, p.Car.Position.Y = mapWidth-nameTableWidth-verticalCarWidth, mapHeight-verticalCarHeight-1
-		p.Car.Direction = LEFT
-	case 3:
-		p.Car.Position.X, p.Car.Position.Y = 1, mapHeight-verticalCarHeight-1
-		p.Car.Direction = UP
-	case 4:
-		p.Car.Position.X, p.Car.Position.Y = (mapWidth-nameTableWidth)/2, mapHeight/2
-		p.Car.Direction = DOWN
+func readTelnet(conn net.Conn) error {
+	// https://tools.ietf.org/html/rfc854
+	reply := make([]byte, 1)
+	bytesRead := 0
+	shortCommand := false
+
+	for {
+		_, err := conn.Read(reply)
+		if err != nil {
+			return err
+		}
+		bytesRead++
+
+		if reply[0] != 250 && bytesRead == 1 {
+			shortCommand = true
+		}
+
+		if shortCommand && bytesRead == 2 {
+			return nil
+		} else if reply[0] == 240 {
+			return nil
+		}
 	}
 }
 
@@ -155,7 +188,7 @@ func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 			} else if r.State == WAITING {
 				r.writeToAllPlayers([]byte(fmt.Sprintf(
 					"Waiting %d seconds for other players to join\n",
-					r.LastStateChange.Unix()+maxRoundWaitingTimeSec-time.Now().Unix())))
+					r.LastStateChange.Unix()+maxRoundWaitingTimeSec-time.Now().Unix())), true)
 			}
 			compileRoundChannel <- r
 		} else {
@@ -176,6 +209,75 @@ func checkRoundRun(runningRoundChannel chan Round) {
 			}
 			go round.start()
 		}
+	}
+}
+
+func (rectangle *Rectangle) intersects(r *Rectangle) bool {
+	if rectangle.Points[RIGHTDOWN].X < r.Points[LEFTUP].X ||
+		r.Points[RIGHTDOWN].X < rectangle.Points[LEFTUP].X ||
+		rectangle.Points[RIGHTDOWN].Y < r.Points[LEFTUP].Y ||
+		r.Points[RIGHTDOWN].Y < rectangle.Points[LEFTUP].Y {
+		return false
+	}
+	return true
+}
+
+func (p *Player) checkBestRoundForPlayer(round chan Round) {
+	// TODO: Do not assign players with the same name in the same round!!
+	for r := range round {
+		if len(r.Players) < maxPlayersPerRound {
+			p.initPlayer(len(r.Players))
+			r.Players = append(r.Players, *p)
+			round <- r
+			break
+		} else {
+			round <- r
+		}
+	}
+}
+
+func (p *Player) initPlayer(id int) {
+	switch id {
+	case 0:
+		initX, initY := 1, 1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + horizontalCarWidth, initY},
+			{initX + horizontalCarWidth, initY + horizontalCarHeight},
+			{initX, initY + horizontalCarHeight}}}
+		p.Car.Direction = RIGHT
+	case 1:
+		initX, initY := mapWidth-nameTableWidth-verticalCarWidth, 1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + horizontalCarWidth, initY},
+			{initX + horizontalCarWidth, initY + horizontalCarHeight},
+			{initX, initY + horizontalCarHeight}}}
+		p.Car.Direction = DOWN
+	case 2:
+		initX, initY := mapWidth-nameTableWidth-verticalCarWidth, mapHeight-verticalCarHeight-1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + horizontalCarWidth, initY},
+			{initX + horizontalCarWidth, initY + horizontalCarHeight},
+			{initX, initY + horizontalCarHeight}}}
+		p.Car.Direction = LEFT
+	case 3:
+		initX, initY := 1, mapHeight-verticalCarHeight-1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + horizontalCarWidth, initY},
+			{initX + horizontalCarWidth, initY + horizontalCarHeight},
+			{initX, initY + horizontalCarHeight}}}
+		p.Car.Direction = UP
+	case 4:
+		initX, initY := (mapWidth-nameTableWidth)/2, mapHeight/2
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + horizontalCarWidth, initY},
+			{initX + horizontalCarWidth, initY + horizontalCarHeight},
+			{initX, initY + horizontalCarHeight}}}
+		p.Car.Direction = DOWN
 	}
 }
 
@@ -207,8 +309,218 @@ func (round *Round) applyNames() {
 	}
 }
 
+func (player *Player) checkPosition(round *Round) {
+	for {
+		player.Car.recalculateBorders(false)
+		hit := false
+		for _, point := range player.Car.Borders.Points {
+			if point.X < 1 || point.X > mapWidth-nameTableWidth || point.Y < 1 || point.Y > mapHeight-1 {
+				// Hit the wall
+				player.Health -= FRONT * player.Car.Speed
+				hit = true
+				break
+			} else {
+				// Hit another car
+				for _, victim := range round.Players {
+					if player.Name == victim.Name {
+						continue
+					} else if player.Car.Borders.intersects(&victim.Car.Borders) {
+						// Hit in the back
+						if (player.Car.Direction == RIGHT && victim.Car.Direction == LEFT) ||
+							(player.Car.Direction == LEFT && victim.Car.Direction == RIGHT) ||
+							(player.Car.Direction == UP && victim.Car.Direction == DOWN) ||
+							(player.Car.Direction == DOWN && victim.Car.Direction == UP) {
+							// Face to face
+							player.Health -= FRONT * (player.Car.Speed + victim.Car.Speed)
+						} else if (player.Car.Direction == RIGHT && victim.Car.Direction == UP) ||
+							(player.Car.Direction == LEFT && victim.Car.Direction == UP) ||
+							(player.Car.Direction == RIGHT && victim.Car.Direction == DOWN) ||
+							(player.Car.Direction == LEFT && victim.Car.Direction == DOWN) ||
+							(player.Car.Direction == UP && victim.Car.Direction == RIGHT) ||
+							(player.Car.Direction == UP && victim.Car.Direction == LEFT) ||
+							(player.Car.Direction == DOWN && victim.Car.Direction == RIGHT) ||
+							(player.Car.Direction == DOWN && victim.Car.Direction == LEFT) {
+							// Side hit
+							player.Health -= SIDE * player.Car.Speed
+						} else {
+							player.Health -= BACK * (player.Car.Speed - victim.Car.Speed)
+						}
+						hit = true
+						break
+					}
+				}
+				if hit {
+					break
+				}
+			}
+		}
+
+		if hit {
+			player.Car.recalculateBorders(true)
+			switch player.Car.Direction {
+			case RIGHT:
+				player.Car.Direction = LEFT
+			case LEFT:
+				player.Car.Direction = RIGHT
+			case UP:
+				player.Car.Direction = DOWN
+			case DOWN:
+				player.Car.Direction = UP
+			}
+			player.LastCrash = time.Now().Unix()
+		}
+
+		if player.Health <= 0 {
+			return
+		}
+
+		/*
+		 Because vertical symbols are 3x bigger, than horizontal, we need to slowdown recalculation of vertical objects
+		*/
+		slowerDown := int64(1)
+		if player.Car.Direction == UP || player.Car.Direction == DOWN {
+			slowerDown = 3
+		}
+
+		time.Sleep(time.Duration(slowerDown*100/player.Car.Speed*2) * time.Millisecond)
+	}
+}
+
+func (car *Car) recalculateBorders(crash bool) {
+	switch car.Direction {
+	case RIGHT:
+		for i := range car.Borders.Points {
+			if crash {
+				car.Borders.Points[i].X -= horizontalCarWidth
+			} else {
+				car.Borders.Points[i].X++
+			}
+		}
+	case LEFT:
+		for i, _ := range car.Borders.Points {
+			if crash {
+				car.Borders.Points[i].X += horizontalCarWidth
+			} else {
+				car.Borders.Points[i].X--
+			}
+		}
+	case UP:
+		for i, _ := range car.Borders.Points {
+			if crash {
+				car.Borders.Points[i].Y += verticalCarHeight
+			} else {
+				car.Borders.Points[i].Y--
+			}
+		}
+	case DOWN:
+		for i, _ := range car.Borders.Points {
+			if crash {
+				car.Borders.Points[i].Y -= verticalCarHeight
+			} else {
+				car.Borders.Points[i].Y++
+			}
+		}
+	}
+}
+
+func (player *Player) checkSpeed() {
+	for {
+		now := time.Now().Unix()
+		if now-player.LastCrash > player.Car.Speed*2 && player.Car.Speed < maxSpeed {
+			player.Car.Speed++
+		} else if now-player.LastCrash < 2 {
+			player.Car.Speed = 1
+		}
+		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
+	}
+}
+
+func (player *Player) readDirection() {
+	if initTelnet(player.Conn) != nil {
+		return
+	}
+
+	for {
+		direction := make([]byte, 1)
+
+		// Read all possible bytes and try to find a sequence of:
+		// ESC [ cursor_key
+		escpos := 0
+		for {
+			_, err := player.Conn.Read(direction)
+			if err != nil {
+				player.Health = 0
+				return
+			}
+
+			// Check if telnet want to negotiate something
+			if escpos == 0 && direction[0] == 255 {
+				readTelnet(player.Conn)
+			} else if escpos == 0 && direction[0] == 27 {
+				escpos = 1
+			} else if direction[0] == 3 {
+				// Ctrl+C
+				player.Health = 0
+				return
+			} else if escpos == 1 && direction[0] == 91 {
+				escpos = 2
+			} else if escpos == 2 {
+				break
+			}
+		}
+
+		switch direction[0] {
+		case 68:
+			// Left
+			if player.Car.Direction != RIGHT {
+				player.Car.Direction = LEFT
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed--
+			}
+		case 67:
+			// Right
+			if player.Car.Direction != LEFT {
+				player.Car.Direction = RIGHT
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed--
+			}
+		case 65:
+			// Up
+			if player.Car.Direction != DOWN {
+				player.Car.Direction = UP
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed--
+			}
+		case 66:
+			// Down
+			if player.Car.Direction != UP {
+				player.Car.Direction = DOWN
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed--
+			}
+		}
+	}
+}
+
+func (round *Round) collisionChecker() {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := range round.Players {
+		if !round.Players[i].Bot {
+			go round.Players[i].readDirection()
+		}
+		go round.Players[i].checkPosition(round)
+		go round.Players[i].checkSpeed()
+	}
+	wg.Wait()
+}
+
 func applyHealth(round *Round, activeMap []byte) {
 	for line, player := range round.Players {
+		if player.Health < 0 {
+			player.Health = 0
+		}
+
 		health := []byte(fmt.Sprintf("%3d", player.Health))
 		for i, char := range health {
 			activeMap[(line+1)*mapWidth+(mapWidth-3)-len(health)+i] = char
@@ -228,94 +540,29 @@ func applyCars(round *Round, activeMap []byte) {
 				charPosX = 0
 				continue
 			}
-			activeMap[(player.Car.Position.Y+charPosY)*mapWidth+player.Car.Position.X+charPosX] = char
+			activeMap[(player.Car.Borders.Points[LEFTUP].Y+charPosY)*mapWidth+player.Car.Borders.Points[LEFTUP].X+charPosX] = char
 			charPosX++
 		}
 	}
 }
 
-func (player *Player) checkCar(round *Round) {
+func (round *Round) checkGameOver() {
+	humans := 0
+	deads := 0
 
-	go player.checkSpeed()
-
-	for {
-		switch player.Car.Direction {
-		case RIGHT:
-			if player.Car.Position.X+1 >= mapWidth-nameTableWidth-horizontalCarWidth {
-				player.Health = player.Health - FRONT*player.Car.Speed
-				player.Car.Direction = LEFT
-				player.LastCrash = time.Now().Unix()
-			} else if player.hitAnotherCar(round) {
-				player.Car.Direction = LEFT
-				player.LastCrash = time.Now().Unix()
-			} else {
-				player.Car.Position.X++
-			}
-		case LEFT:
-			if player.Car.Position.X-1 == 0 {
-				player.Health = player.Health - FRONT*player.Car.Speed
-				player.Car.Direction = RIGHT
-				player.LastCrash = time.Now().Unix()
-			} else if player.hitAnotherCar(round) {
-				player.Car.Direction = RIGHT
-				player.LastCrash = time.Now().Unix()
-			} else {
-				player.Car.Position.X--
-			}
-		case UP:
-			if player.Car.Position.Y-1 == 0 {
-				player.Health = player.Health - FRONT*player.Car.Speed
-				player.Car.Direction = DOWN
-				player.LastCrash = time.Now().Unix()
-			} else if player.hitAnotherCar(round) {
-				player.Car.Direction = DOWN
-				player.LastCrash = time.Now().Unix()
-			} else {
-				player.Car.Position.Y--
-			}
-		case DOWN:
-			if player.Car.Position.Y+1 >= mapHeight-verticalCarHeight {
-				player.Health = player.Health - FRONT*player.Car.Speed
-				player.Car.Direction = UP
-				player.LastCrash = time.Now().Unix()
-			} else if player.hitAnotherCar(round) {
-				player.Car.Direction = UP
-				player.LastCrash = time.Now().Unix()
-			} else {
-				player.Car.Position.Y++
-			}
-		}
-
-		if player.Health <= 0 {
-			return
-		}
-		time.Sleep(time.Duration(100/player.Car.Speed*2) * time.Millisecond)
-	}
-}
-
-/*
-* Check if we hit another car and how many points should be subtracted
-* We subtract point from both cars in this function
- */
-func (player *Player) hitAnotherCar(round *Round) bool {
 	for _, p := range round.Players {
-		if p == *player {
-			continue
+		if !p.Bot {
+			humans++
+			if p.Health <= 0 {
+				deads++
+			}
 		}
-		return false
-	}
-	return false
-}
 
-func (player *Player) checkSpeed() {
-	for {
-		now := time.Now().Unix()
-		if now-player.LastCrash > player.Car.Speed*2 && player.Car.Speed < maxSpeed {
-			player.Car.Speed++
-		} else if now-player.LastCrash < 2 {
-			player.Car.Speed = 1
-		}
-		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
+	}
+
+	secondsLeft := round.LastStateChange.Unix() + maxRoundRunningTimeSec - time.Now().Unix()
+	if humans == deads || secondsLeft <= 0 {
+		round.State = FINISHED
 	}
 }
 
@@ -323,24 +570,22 @@ func (round Round) start() {
 	round.generateMap()
 	round.applyNames()
 
-	for i := range round.Players {
-		go round.Players[i].checkCar(&round)
-	}
+	go round.collisionChecker()
 
 	for {
 		activeMap := make([]byte, len(round.Map))
 		copy(activeMap, round.Map)
 
-		secondsLeft := round.LastStateChange.Unix() + maxRoundRunningTimeSec - time.Now().Unix()
-		if secondsLeft <= 0 {
-			round.over()
-			return
-		}
-
 		applyHealth(&round, activeMap)
 		applyCars(&round, activeMap)
 
-		round.writeToAllPlayers(activeMap)
+		round.writeToAllPlayers(activeMap, false)
+
+		round.checkGameOver()
+		if round.State == FINISHED {
+			round.over()
+			return
+		}
 
 		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
 	}
@@ -348,8 +593,7 @@ func (round Round) start() {
 }
 
 func (round *Round) over() {
-	round.writeToAllPlayers([]byte("Time is out\n"))
-	round.State = FINISHED
+	round.writeToAllPlayers([]byte("Time is out\n"), false)
 	for _, player := range round.Players {
 		if player.Bot {
 			continue
@@ -358,16 +602,19 @@ func (round *Round) over() {
 	}
 }
 
-func (round *Round) writeToAllPlayers(message []byte) {
+func (round *Round) writeToAllPlayers(message []byte, clean bool) {
 	for _, player := range round.Players {
 		if player.Bot {
 			continue
 		}
 
-		go func(message []byte, player Player) {
-			player.Conn.Write(clear)
+		go func(message []byte, player Player, clean bool) {
+			if clean {
+				player.Conn.Write(clear)
+			}
+			player.Conn.Write(home)
 			player.Conn.Write(message)
-		}(message, player)
+		}(message, player, clean)
 	}
 }
 
