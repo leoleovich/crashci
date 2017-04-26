@@ -10,20 +10,20 @@ import (
 	"time"
 )
 
+const framesPerSecond = 5
 const maxParallelRounds = 100
 const maxPlayersPerRound = 5
 const minPlayersPerRound = 1
 const maxRoundWaitingTimeSec = 5
 const maxRoundRunningTimeSec = 600
-const framesPerSecond = 4
 const mapWidth = 179
 const mapHeight = 38
 const nameTableWidth = 30
 const maxSpeed = 5
-const horizontalCarWidth = 2
-const horizontalCarHeight = 2
-const verticalCarWidth = 2
-const verticalCarHeight = 2
+const horizontalCarWidth = 7
+const horizontalCarHeight = 3
+const verticalCarWidth = 5
+const verticalCarHeight = 3
 
 const colorPrefix = "\x1b["
 const colorPostfix = "m"
@@ -69,18 +69,15 @@ const (
 	MAGENTA
 )
 
-var cars = [][]byte{
-	[]byte("<|\n<|"),
-	[]byte("|>\n|>"),
-	[]byte("^^\n__"),
-	[]byte("--\nvv")}
+var cars = [4][]byte{}
 
 //var clear = []byte{27, 91, 50, 74, 27, 91, 72}
 var home = []byte{27, 91, 72}
 var clear = []byte{27, 91, 50, 74}
 
 type Config struct {
-	Log *log.Logger
+	Log      *log.Logger
+	AcidPath string
 }
 
 type Point struct {
@@ -121,6 +118,26 @@ type Symbol struct {
 }
 
 type Symbols []Symbol
+
+func getAcid(conf *Config, fileName string) ([]byte, error) {
+	fileStat, err := os.Stat(conf.AcidPath + "/" + fileName)
+	if err != nil {
+		conf.Log.Printf("Acid %s does not exist: %v\n", fileName, err)
+		return []byte{}, err
+	}
+
+	acid := make([]byte, fileStat.Size())
+	f, err := os.OpenFile(conf.AcidPath+"/"+fileName, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		conf.Log.Printf("Error while opening %s: %v\n", fileName, err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	f.Read(acid)
+
+	return acid, nil
+}
 
 func getPlayerData(conn net.Conn) Player {
 	// Get data of player and return the structure
@@ -274,12 +291,12 @@ func (p *Player) initPlayer(id int) {
 		initX, initY := mapWidth-nameTableWidth-verticalCarWidth, 1
 		p.Car.Borders = Rectangle{[4]Point{
 			{initX, initY},
-			{initX + horizontalCarWidth, initY},
-			{initX + horizontalCarWidth, initY + horizontalCarHeight},
-			{initX, initY + horizontalCarHeight}}}
+			{initX + verticalCarWidth, initY},
+			{initX + verticalCarWidth, initY + verticalCarHeight},
+			{initX, initY + verticalCarHeight}}}
 		p.Car.Direction = DOWN
 	case 2:
-		initX, initY := mapWidth-nameTableWidth-verticalCarWidth, mapHeight-verticalCarHeight-1
+		initX, initY := mapWidth-nameTableWidth-horizontalCarWidth, mapHeight-horizontalCarHeight-1
 		p.Car.Borders = Rectangle{[4]Point{
 			{initX, initY},
 			{initX + horizontalCarWidth, initY},
@@ -290,17 +307,17 @@ func (p *Player) initPlayer(id int) {
 		initX, initY := 1, mapHeight-verticalCarHeight-1
 		p.Car.Borders = Rectangle{[4]Point{
 			{initX, initY},
-			{initX + horizontalCarWidth, initY},
-			{initX + horizontalCarWidth, initY + horizontalCarHeight},
-			{initX, initY + horizontalCarHeight}}}
+			{initX + verticalCarWidth, initY},
+			{initX + verticalCarWidth, initY + verticalCarHeight},
+			{initX, initY + verticalCarHeight}}}
 		p.Car.Direction = UP
 	case 4:
 		initX, initY := (mapWidth-nameTableWidth)/2, mapHeight/2
 		p.Car.Borders = Rectangle{[4]Point{
 			{initX, initY},
-			{initX + horizontalCarWidth, initY},
-			{initX + horizontalCarWidth, initY + horizontalCarHeight},
-			{initX, initY + horizontalCarHeight}}}
+			{initX + verticalCarWidth, initY},
+			{initX + verticalCarWidth, initY + verticalCarHeight},
+			{initX, initY + verticalCarHeight}}}
 		p.Car.Direction = DOWN
 	}
 	// Colors are sequential, so we can use first color RED and set the rest based on IDs
@@ -347,10 +364,8 @@ func (player *Player) checkPosition(round *Round) {
 				break
 			} else {
 				// Hit another car
-				for _, victim := range round.Players {
-					if player.Name == victim.Name {
-						continue
-					} else if player.Car.Borders.intersects(&victim.Car.Borders) {
+				for _, victim := range round.getAlivePlayers(player) {
+					if player.Car.Borders.intersects(&victim.Car.Borders) {
 						// Hit in the back
 						if (player.Car.Direction == RIGHT && victim.Car.Direction == LEFT) ||
 							(player.Car.Direction == LEFT && victim.Car.Direction == RIGHT) ||
@@ -528,11 +543,89 @@ func (player *Player) readDirection() {
 	}
 }
 
+func (player *Player) moveBot(round *Round) {
+	for {
+		/*We need to find the best player to attack, based on:
+		* Less health
+		* Closest to us
+		 */
+
+		alivePlayers := round.getAlivePlayers(player)
+		targetPlayer := alivePlayers[rand.Intn(len(alivePlayers))]
+
+		for i := 0; i < 20; i++ {
+			myCenter := Point{
+				player.Car.Borders.Points[LEFTUP].X + (player.Car.Borders.Points[RIGHTUP].X-player.Car.Borders.Points[LEFTUP].X)/2,
+				player.Car.Borders.Points[LEFTUP].Y + (player.Car.Borders.Points[LEFTDOWN].Y-player.Car.Borders.Points[LEFTUP].Y)/2,
+			}
+			targetCenter := Point{
+				targetPlayer.Car.Borders.Points[LEFTUP].X + (targetPlayer.Car.Borders.Points[RIGHTUP].X-targetPlayer.Car.Borders.Points[LEFTUP].X)/2,
+				targetPlayer.Car.Borders.Points[LEFTUP].Y + (targetPlayer.Car.Borders.Points[LEFTDOWN].Y-targetPlayer.Car.Borders.Points[LEFTUP].Y)/2,
+			}
+
+			if targetCenter.X < myCenter.X {
+				// Target is left from us
+				if player.Car.Direction != RIGHT {
+					player.Car.Direction = LEFT
+				} else if targetCenter.Y < myCenter.Y {
+					player.Car.Direction = UP
+				} else {
+					player.Car.Direction = DOWN
+				}
+			} else if targetCenter.X > myCenter.X {
+				// Target is right from us
+				if player.Car.Direction != LEFT {
+					player.Car.Direction = RIGHT
+				} else if targetCenter.Y < myCenter.Y {
+					player.Car.Direction = UP
+				} else {
+					player.Car.Direction = DOWN
+				}
+
+			} else if targetCenter.Y < myCenter.Y {
+				// Target is above us
+				if player.Car.Direction != DOWN {
+					player.Car.Direction = UP
+				} else if targetCenter.X > myCenter.X {
+					player.Car.Direction = RIGHT
+				} else {
+					player.Car.Direction = LEFT
+				}
+			} else if targetCenter.Y > myCenter.Y {
+				// Target it below us
+				if player.Car.Direction != UP {
+					player.Car.Direction = DOWN
+				} else if targetCenter.X > myCenter.X {
+					player.Car.Direction = RIGHT
+				} else {
+					player.Car.Direction = LEFT
+				}
+
+			}
+			time.Sleep(time.Duration(500 * time.Millisecond))
+		}
+	}
+}
+
+func (round *Round) getAlivePlayers(me *Player) []Player {
+	players := []Player{}
+	for _, p := range round.Players {
+		if me.Name == p.Name {
+			continue
+		} else if p.Health > 0 {
+			players = append(players, p)
+		}
+	}
+	return players
+}
+
 func (round *Round) collisionChecker() {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	for i := range round.Players {
-		if !round.Players[i].Bot {
+		if round.Players[i].Bot {
+			go round.Players[i].moveBot(round)
+		} else {
 			go round.Players[i].readDirection()
 		}
 		go round.Players[i].checkPosition(round)
@@ -560,13 +653,28 @@ func applyCars(round *Round, activeMap []Symbol) {
 			continue
 		}
 		charPosX, charPosY := 0, 0
-		for _, char := range cars[player.Car.Direction] {
-			if char == byte('\n') {
+		for i := 0; i < len(cars[player.Car.Direction]); i++ {
+			var chars []byte
+			if cars[player.Car.Direction][i] == byte('\n') {
 				charPosY++
 				charPosX = 0
 				continue
+			} else if cars[player.Car.Direction][i] == 226 {
+				/*
+				 This means extended ASCII is used. After 226 2 bytes must follow
+				*/
+				chars = []byte{cars[player.Car.Direction][i], cars[player.Car.Direction][i+1], cars[player.Car.Direction][i+2]}
+				i += 2
+			} else if cars[player.Car.Direction][i] == 194 {
+				/*
+				 This means extended ASCII is used. After 194 1 bytes must follow
+				*/
+				chars = []byte{cars[player.Car.Direction][i], cars[player.Car.Direction][i+1]}
+				i++
+			} else {
+				chars = []byte{cars[player.Car.Direction][i]}
 			}
-			activeMap[(player.Car.Borders.Points[LEFTUP].Y+charPosY)*mapWidth+player.Car.Borders.Points[LEFTUP].X+charPosX] = Symbol{player.Color, []byte{char}}
+			activeMap[(player.Car.Borders.Points[LEFTUP].Y+charPosY)*mapWidth+player.Car.Borders.Points[LEFTUP].X+charPosX] = Symbol{player.Color, chars}
 			charPosX++
 		}
 	}
@@ -645,13 +753,22 @@ func (round *Round) writeToAllPlayers(message []byte, clean bool) {
 }
 
 func main() {
+	// Make random unique
+	rand.Seed(time.Now().Unix())
+
 	logfile, err := os.OpenFile("/var/log/crashci.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
-	conf := &Config{log.New(logfile, "", log.Ldate|log.Lmicroseconds|log.Lshortfile)}
+	conf := &Config{log.New(logfile, "", log.Ldate|log.Lmicroseconds|log.Lshortfile), "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts"}
 	l, err := net.Listen("tcp", ":4242")
 	if err != nil {
 		os.Exit(2)
 	}
 	defer l.Close()
+
+	// Read sketches
+	cars[LEFT], _ = getAcid(conf, "carLeft.txt")
+	cars[RIGHT], _ = getAcid(conf, "carRight.txt")
+	cars[UP], _ = getAcid(conf, "carUp.txt")
+	cars[DOWN], _ = getAcid(conf, "carDown.txt")
 
 	compileRoundChannel := make(chan Round, maxParallelRounds)
 	runningRoundChannel := make(chan Round, maxParallelRounds)
