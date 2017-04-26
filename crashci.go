@@ -25,7 +25,8 @@ const horizontalCarHeight = 2
 const verticalCarWidth = 2
 const verticalCarHeight = 2
 
-const setColor = "\x1b[%dm"
+const colorPrefix = "\x1b["
+const colorPostfix = "m"
 
 // States of the round
 const (
@@ -101,6 +102,7 @@ type Player struct {
 	Name      string
 	Health    int64
 	LastCrash int64
+	Color     int
 	Bot       bool
 	BotReady  bool
 	Car       Car
@@ -110,8 +112,15 @@ type Round struct {
 	Players         []Player
 	State           int
 	LastStateChange time.Time
-	Map             []byte
+	FrameBuffer     Symbols
 }
+
+type Symbol struct {
+	Color int
+	Char  []byte
+}
+
+type Symbols []Symbol
 
 func getPlayerData(conn net.Conn) Player {
 	// Get data of player and return the structure
@@ -222,6 +231,21 @@ func (rectangle *Rectangle) intersects(r *Rectangle) bool {
 	return true
 }
 
+func (symbols Symbols) symbolsToByte() []byte {
+	var returnSlice []byte
+	for _, symbol := range symbols {
+		// Should be something like \x1b[31m^\x1b[0m for symbols with colors or ^ without
+		if symbol.Color != RESET {
+			returnSlice = append(returnSlice, []byte(colorPrefix+fmt.Sprintf("%d", symbol.Color)+colorPostfix)...)
+		}
+		returnSlice = append(returnSlice, symbol.Char...)
+		if symbol.Color != RESET {
+			returnSlice = append(returnSlice, []byte(colorPrefix+fmt.Sprintf("%d", RESET)+colorPostfix)...)
+		}
+	}
+	return returnSlice
+}
+
 func (p *Player) checkBestRoundForPlayer(round chan Round) {
 	// TODO: Do not assign players with the same name in the same round!!
 	for r := range round {
@@ -279,33 +303,35 @@ func (p *Player) initPlayer(id int) {
 			{initX, initY + horizontalCarHeight}}}
 		p.Car.Direction = DOWN
 	}
+	// Colors are sequential, so we can use first color RED and set the rest based on IDs
+	p.Color = RED + id
 }
 
 func (round *Round) generateMap() {
 	for row := 0; row < mapHeight; row++ {
 		for column := 0; column < mapWidth; column++ {
-			var symbol byte
+			var char byte
 			if (row == 0 || row == mapHeight-1) && column < mapWidth-2 {
-				symbol = byte('-')
+				char = byte('-')
 			} else if column == 0 || column == mapWidth-3 || column == mapWidth-nameTableWidth {
-				symbol = byte('|')
+				char = byte('|')
 			} else if column == mapWidth-2 {
-				symbol = byte('\r')
+				char = byte('\r')
 			} else if column == mapWidth-1 {
-				symbol = byte('\n')
+				char = byte('\n')
 			} else {
-				symbol = byte(' ')
+				char = byte(' ')
 			}
-			round.Map[row*mapWidth+column] = symbol
+			round.FrameBuffer[row*mapWidth+column] = Symbol{0, []byte{char}}
 		}
 	}
 }
 func (round *Round) applyNames() {
 	for line, player := range round.Players {
 		for i, char := range []byte(player.Name) {
-			round.Map[(line+1)*mapWidth+(mapWidth-nameTableWidth+1)+i] = char
+			round.FrameBuffer[(line+1)*mapWidth+(mapWidth-nameTableWidth+1)+i] = Symbol{player.Color, []byte{char}}
 		}
-		round.Map[(line+1)*mapWidth+(mapWidth-nameTableWidth+1)+len(player.Name)] = byte(':')
+		round.FrameBuffer[(line+1)*mapWidth+(mapWidth-nameTableWidth+1)+len(player.Name)] = Symbol{RESET, []byte{':'}}
 	}
 }
 
@@ -475,28 +501,28 @@ func (player *Player) readDirection() {
 			if player.Car.Direction != RIGHT {
 				player.Car.Direction = LEFT
 			} else if player.Car.Speed > 1 {
-				player.Car.Speed--
+				player.Car.Speed = 1
 			}
 		case 67:
 			// Right
 			if player.Car.Direction != LEFT {
 				player.Car.Direction = RIGHT
 			} else if player.Car.Speed > 1 {
-				player.Car.Speed--
+				player.Car.Speed = 1
 			}
 		case 65:
 			// Up
 			if player.Car.Direction != DOWN {
 				player.Car.Direction = UP
 			} else if player.Car.Speed > 1 {
-				player.Car.Speed--
+				player.Car.Speed = 1
 			}
 		case 66:
 			// Down
 			if player.Car.Direction != UP {
 				player.Car.Direction = DOWN
 			} else if player.Car.Speed > 1 {
-				player.Car.Speed--
+				player.Car.Speed = 1
 			}
 		}
 	}
@@ -515,7 +541,7 @@ func (round *Round) collisionChecker() {
 	wg.Wait()
 }
 
-func applyHealth(round *Round, activeMap []byte) {
+func applyHealth(round *Round, activeMap []Symbol) {
 	for line, player := range round.Players {
 		if player.Health < 0 {
 			player.Health = 0
@@ -523,12 +549,12 @@ func applyHealth(round *Round, activeMap []byte) {
 
 		health := []byte(fmt.Sprintf("%3d", player.Health))
 		for i, char := range health {
-			activeMap[(line+1)*mapWidth+(mapWidth-3)-len(health)+i] = char
+			activeMap[(line+1)*mapWidth+(mapWidth-3)-len(health)+i] = Symbol{player.Color, []byte{char}}
 		}
 	}
 }
 
-func applyCars(round *Round, activeMap []byte) {
+func applyCars(round *Round, activeMap []Symbol) {
 	for _, player := range round.Players {
 		if player.Health <= 0 {
 			continue
@@ -540,7 +566,7 @@ func applyCars(round *Round, activeMap []byte) {
 				charPosX = 0
 				continue
 			}
-			activeMap[(player.Car.Borders.Points[LEFTUP].Y+charPosY)*mapWidth+player.Car.Borders.Points[LEFTUP].X+charPosX] = char
+			activeMap[(player.Car.Borders.Points[LEFTUP].Y+charPosY)*mapWidth+player.Car.Borders.Points[LEFTUP].X+charPosX] = Symbol{player.Color, []byte{char}}
 			charPosX++
 		}
 	}
@@ -573,13 +599,13 @@ func (round Round) start() {
 	go round.collisionChecker()
 
 	for {
-		activeMap := make([]byte, len(round.Map))
-		copy(activeMap, round.Map)
+		activeFrameBuffer := make(Symbols, len(round.FrameBuffer))
+		copy(activeFrameBuffer, round.FrameBuffer)
 
-		applyHealth(&round, activeMap)
-		applyCars(&round, activeMap)
+		applyHealth(&round, activeFrameBuffer)
+		applyCars(&round, activeFrameBuffer)
 
-		round.writeToAllPlayers(activeMap, false)
+		round.writeToAllPlayers(activeFrameBuffer.symbolsToByte(), false)
 
 		round.checkGameOver()
 		if round.State == FINISHED {
@@ -643,7 +669,7 @@ func main() {
 		p := getPlayerData(conn)
 
 		if len(compileRoundChannel) == 0 {
-			r := Round{State: COMPILING, Map: make([]byte, mapWidth*mapHeight)}
+			r := Round{State: COMPILING, FrameBuffer: make([]Symbol, mapWidth*mapHeight)}
 			compileRoundChannel <- r
 		}
 
