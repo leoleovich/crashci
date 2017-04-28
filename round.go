@@ -138,7 +138,7 @@ func (round *Round) applyNames(lineBetweenPlayersInBar int) {
 }
 
 func (round *Round) applyBonus(activeFrameBuffer []Symbol) {
-	if round.State == PAUSED {
+	if round.State == STARTING {
 		return
 	}
 	if round.Bonus.X == -1 && round.Bonus.Y == -1 {
@@ -151,7 +151,7 @@ func (round *Round) applyBonus(activeFrameBuffer []Symbol) {
 }
 
 func (round *Round) applyBombs(activeFrameBuffer []Symbol, lineBetweenPlayersInBar int) {
-	if round.State == PAUSED {
+	if round.State == STARTING {
 		return
 	}
 
@@ -181,9 +181,10 @@ func (round *Round) applyUserData(activeFrameBuffer []Symbol, lineBetweenPlayers
 }
 
 func (round *Round) applyGetReady(activeFrameBuffer []Symbol, getReadyCounter *int) {
-	if round.State == PAUSED {
+	if round.State == STARTING {
 		getReady := "GET READY!"
 		if *getReadyCounter == 0 {
+			fmt.Println("Round has changed to the state RUNNING")
 			round.State = RUNNING
 		} else if *getReadyCounter <= framesPerSecond*1 {
 			getReady += " 1"
@@ -235,11 +236,10 @@ func (round *Round) applyCars(activeMap []Symbol) {
 func (round Round) start() {
 	lineBetweenPlayersInBar := mapHeight / len(round.Players)
 	getReadyCounter := getReadyPause / framesPerSecond
-	round.State = PAUSED
+
+	round.gameLogic()
 	round.generateMap()
 	round.applyNames(lineBetweenPlayersInBar)
-
-	go round.gameLogic()
 
 	for {
 		activeFrameBuffer := make(Symbols, len(round.FrameBuffer))

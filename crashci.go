@@ -42,8 +42,8 @@ const bomb = "\xE2\x9C\xB3"
 const (
 	COMPILING = 1 + iota
 	WAITING
+	STARTING
 	RUNNING
-	PAUSED
 	FINISHED
 )
 
@@ -166,8 +166,8 @@ func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 		if len(r.Players) == maxPlayersPerRound ||
 			(r.State == WAITING && r.LastStateChange.Add(maxRoundWaitingTimeSec*time.Second).Before(time.Now())) {
 			// We are starting round if it is fully booked or waiting time is expired
-			fmt.Println("Round has changed to the state RUNNING")
-			r.State = RUNNING
+			fmt.Println("Round has changed to the state STARTING")
+			r.State = STARTING
 			r.LastStateChange = time.Now()
 			runningRoundChannel <- r
 		} else if botReady == len(r.Players) && len(r.Players) >= minPlayersPerRound {
