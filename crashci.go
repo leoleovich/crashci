@@ -47,13 +47,6 @@ const (
 	FINISHED
 )
 
-// States of bombs
-const (
-	BOMB_MISSES = 0 + iota
-	BOMB_PRESENTS
-	BOMB_PLANTED
-)
-
 // Directions
 const (
 	LEFT = 0 + iota
@@ -94,8 +87,8 @@ var cars = [4][]byte{}
 var home = []byte{27, 91, 72}
 var clear = []byte{27, 91, 50, 74}
 
-// [12A[100D
-var middle = []byte{27, 91, 49, 50, 65, 27, 91, 49, 48, 48, 68}
+// [14A[100D
+var middle = []byte{27, 91, 49, 52, 65, 27, 91, 57, 52, 68}
 
 type Config struct {
 	Log      *log.Logger

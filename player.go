@@ -7,15 +7,16 @@ import (
 )
 
 type Player struct {
-	Conn       net.Conn
-	Name       string
-	Health     int64
-	LastCrash  int64
-	Color      int
-	Bot        bool
-	BotReady   bool
-	BombStatus int
-	Car        Car
+	Conn      net.Conn
+	Name      string
+	Health    int64
+	LastCrash int64
+	Color     int
+	Bot       bool
+	BotReady  bool
+	Bombs     int
+	DropBomb  bool
+	Car       Car
 }
 
 func (p *Player) initPlayer(id int) {
@@ -61,7 +62,7 @@ func (p *Player) initPlayer(id int) {
 			{initX, initY + verticalCarHeight - 1}}}
 		p.Car.Direction = DOWN
 	}
-	p.BombStatus = BOMB_PRESENTS
+	p.Bombs = 1
 	p.LastCrash = time.Now().Add(10 * time.Second).Unix()
 	// Colors are sequential, so we can use first color RED and set the rest based on IDs
 	p.Color = RED + id
@@ -81,13 +82,13 @@ func (p *Player) checkBestRoundForPlayer(round chan Round) {
 	}
 }
 
-func (player *Player) readDirection() {
+func (player *Player) readDirection(round *Round) {
 	if initTelnet(player.Conn) != nil {
 		return
 	}
 
 	for {
-		if player.Health <= 0 {
+		if player.Health <= 0 || round.State == FINISHED {
 			return
 		}
 		direction := make([]byte, 1)
@@ -111,8 +112,8 @@ func (player *Player) readDirection() {
 				return
 			} else if escpos == 0 && direction[0] == 32 {
 				// Space
-				if player.BombStatus == BOMB_PRESENTS {
-					player.BombStatus = BOMB_PLANTED
+				if player.Bombs > 0 {
+					player.DropBomb = true
 				}
 			} else if escpos == 0 && direction[0] == 27 {
 				escpos = 1
@@ -178,10 +179,12 @@ func (player *Player) moveBot(round *Round) {
 		restPlayers := round.getPlayersExcept([]Player{*targetPlayer, *player})
 
 		for i := 0; i < 20; i++ {
-			if round.State == RUNNING {
+			if round.State == FINISHED {
+				return
+			} else if round.State == RUNNING {
 				// Check if BOT is throwing the bomb
-				if player.BombStatus == BOMB_PRESENTS && rand.Int()%factor == 0 {
-					player.BombStatus = BOMB_PLANTED
+				if player.Bombs > 0 && rand.Int()%factor == 0 {
+					player.DropBomb = true
 				}
 
 				// Do not hunt dead player
@@ -401,11 +404,9 @@ func (player *Player) checkHitBomb(round *Round) {
 
 func (player *Player) checkPosition(round *Round) {
 	for {
-		if player.Health <= 0 {
+		if player.Health <= 0 || round.State == FINISHED {
 			return
-		}
-
-		if round.State == RUNNING {
+		} else if round.State == RUNNING {
 			// Move player
 			player.Car.recalculateBorders(false)
 
@@ -431,17 +432,76 @@ func (player *Player) checkPosition(round *Round) {
 	}
 }
 
-func (player *Player) checkSpeed() {
+func (player *Player) checkSpeed(round *Round) {
 	for {
-		if player.Health <= 0 {
+		if player.Health <= 0 || round.State == FINISHED {
 			return
 		}
+
 		now := time.Now().Unix()
 		if now-player.LastCrash > player.Car.Speed*2 && player.Car.Speed < maxSpeed {
 			player.Car.Speed++
 		} else if now-player.LastCrash < 2 {
 			player.Car.Speed = 1
 		}
+		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
+	}
+}
+
+func (player *Player) checkHealth(round *Round) {
+	for {
+		if player.Health <= 0 || round.State == FINISHED {
+			return
+		}
+
+		for num, player := range round.Players {
+			if player.Health > 100 {
+				round.Players[num].Health = 100
+			} else if player.Health <= 0 {
+				round.Players[num].Health = 0
+				round.Players[num].Color = BOLD
+			}
+		}
+		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
+	}
+}
+
+func (player *Player) checkBomb(round *Round) {
+	for {
+		if player.Health <= 0 || round.State == FINISHED {
+			return
+		}
+
+		for num, player := range round.Players {
+			if player.DropBomb {
+				bombPosition := Point{}
+
+				switch player.Car.Direction {
+				case LEFT:
+					bombPosition.X = player.Car.Borders.Points[RIGHTUP].X + 1
+					bombPosition.Y = player.Car.Borders.Points[RIGHTUP].Y + (player.Car.Borders.Points[RIGHTDOWN].Y-player.Car.Borders.Points[RIGHTUP].Y)/2
+				case RIGHT:
+					bombPosition.X = player.Car.Borders.Points[LEFTUP].X - 1
+					bombPosition.Y = player.Car.Borders.Points[RIGHTUP].Y + (player.Car.Borders.Points[RIGHTDOWN].Y-player.Car.Borders.Points[RIGHTUP].Y)/2
+				case UP:
+					bombPosition.X = player.Car.Borders.Points[LEFTUP].X + (player.Car.Borders.Points[RIGHTUP].X-player.Car.Borders.Points[LEFTUP].X)/2
+					bombPosition.Y = player.Car.Borders.Points[LEFTDOWN].Y + 1
+				case DOWN:
+					bombPosition.X = player.Car.Borders.Points[LEFTUP].X + (player.Car.Borders.Points[RIGHTUP].X-player.Car.Borders.Points[LEFTUP].X)/2
+					bombPosition.Y = player.Car.Borders.Points[LEFTUP].Y - 1
+				}
+				if bombPosition.X > 1 && bombPosition.X < mapWidth-nameTableWidth-1 && bombPosition.Y > 1 && bombPosition.Y < mapHeight-1 {
+					round.Players[num].DropBomb = false
+					round.Players[num].Bombs--
+					round.Lock.Lock()
+					round.Bombs[bombPosition] = true
+					round.Lock.Unlock()
+				}
+			} else if rand.Int()%(factor*10) == 0 && round.State == RUNNING {
+				round.Players[num].Bombs++
+			}
+		}
+
 		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
 	}
 }
