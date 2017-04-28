@@ -1,0 +1,447 @@
+package main
+
+import (
+	"math/rand"
+	"net"
+	"time"
+)
+
+type Player struct {
+	Conn       net.Conn
+	Name       string
+	Health     int64
+	LastCrash  int64
+	Color      int
+	Bot        bool
+	BotReady   bool
+	BombStatus int
+	Car        Car
+}
+
+func (p *Player) initPlayer(id int) {
+	switch id {
+	case 0:
+		initX, initY := 1, 1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + horizontalCarWidth - 1, initY},
+			{initX + horizontalCarWidth - 1, initY + horizontalCarHeight - 1},
+			{initX, initY + horizontalCarHeight - 1}}}
+		p.Car.Direction = RIGHT
+	case 1:
+		initX, initY := mapWidth-nameTableWidth-verticalCarWidth, 1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + verticalCarWidth - 1, initY},
+			{initX + verticalCarWidth, initY + verticalCarHeight - 1},
+			{initX, initY + verticalCarHeight - 1}}}
+		p.Car.Direction = DOWN
+	case 2:
+		initX, initY := mapWidth-nameTableWidth-horizontalCarWidth, mapHeight-horizontalCarHeight-1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + horizontalCarWidth - 1, initY},
+			{initX + horizontalCarWidth - 1, initY + horizontalCarHeight - 1},
+			{initX, initY + horizontalCarHeight - 1}}}
+		p.Car.Direction = LEFT
+	case 3:
+		initX, initY := 1, mapHeight-verticalCarHeight-1
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + verticalCarWidth - 1, initY},
+			{initX + verticalCarWidth - 1, initY + verticalCarHeight - 1},
+			{initX, initY + verticalCarHeight - 1}}}
+		p.Car.Direction = UP
+	case 4:
+		initX, initY := (mapWidth-nameTableWidth)/2, mapHeight/2
+		p.Car.Borders = Rectangle{[4]Point{
+			{initX, initY},
+			{initX + verticalCarWidth - 1, initY},
+			{initX + verticalCarWidth - 1, initY + verticalCarHeight - 1},
+			{initX, initY + verticalCarHeight - 1}}}
+		p.Car.Direction = DOWN
+	}
+	p.BombStatus = BOMB_PRESENTS
+	p.LastCrash = time.Now().Add(10 * time.Second).Unix()
+	// Colors are sequential, so we can use first color RED and set the rest based on IDs
+	p.Color = RED + id
+}
+
+func (p *Player) checkBestRoundForPlayer(round chan Round) {
+	// TODO: Do not assign players with the same name in the same round!!
+	for r := range round {
+		if len(r.Players) < maxPlayersPerRound {
+			p.initPlayer(len(r.Players))
+			r.Players = append(r.Players, *p)
+			round <- r
+			break
+		} else {
+			round <- r
+		}
+	}
+}
+
+func (player *Player) readDirection() {
+	if initTelnet(player.Conn) != nil {
+		return
+	}
+
+	for {
+		if player.Health <= 0 {
+			return
+		}
+		direction := make([]byte, 1)
+
+		// Read all possible bytes and try to find a sequence of:
+		// ESC [ cursor_key
+		escpos := 0
+		for {
+			_, err := player.Conn.Read(direction)
+			if err != nil {
+				player.Health = 0
+				return
+			}
+
+			// Check if telnet want to negotiate something
+			if escpos == 0 && direction[0] == 255 {
+				readTelnet(player.Conn)
+			} else if escpos == 0 && direction[0] == 3 {
+				// Ctrl+C
+				player.Health = 0
+				return
+			} else if escpos == 0 && direction[0] == 32 {
+				// Space
+				if player.BombStatus == BOMB_PRESENTS {
+					player.BombStatus = BOMB_PLANTED
+				}
+			} else if escpos == 0 && direction[0] == 27 {
+				escpos = 1
+			} else if escpos == 1 && direction[0] == 91 {
+				escpos = 2
+			} else if escpos == 2 {
+				break
+			}
+		}
+
+		switch direction[0] {
+		case 68:
+			// Left
+			if player.Car.Direction != RIGHT {
+				player.Car.Direction = LEFT
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed = 1
+			}
+		case 67:
+			// Right
+			if player.Car.Direction != LEFT {
+				player.Car.Direction = RIGHT
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed = 1
+			}
+		case 65:
+			// Up
+			if player.Car.Direction != DOWN {
+				player.Car.Direction = UP
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed = 1
+			}
+		case 66:
+			// Down
+			if player.Car.Direction != UP {
+				player.Car.Direction = DOWN
+			} else if player.Car.Speed > 1 {
+				player.Car.Speed = 1
+			}
+		}
+	}
+}
+
+/*
+Checks of the DAMAGE_SIDE is safe
+*/
+func (player *Player) checkOkSide(players []*Player, side int) bool {
+	for _, p := range players {
+		if p.Name == player.Name {
+			continue
+		}
+		// If player nextTo someone from the DAMAGE_SIDE - return false
+		if side == player.Car.Borders.nextTo(&p.Car.Borders, 3) {
+			return false
+		}
+	}
+	return true
+}
+
+func (player *Player) moveBot(round *Round) {
+	for {
+		targetPlayer := &round.Players[round.getRandomNonBotPlayerId()]
+		restPlayers := round.getPlayersExcept([]Player{*targetPlayer, *player})
+
+		for i := 0; i < 20; i++ {
+			if round.State == RUNNING {
+				// Check if BOT is throwing the bomb
+				if player.BombStatus == BOMB_PRESENTS && rand.Int()%factor == 0 {
+					player.BombStatus = BOMB_PLANTED
+				}
+
+				// Do not hunt dead player
+				if targetPlayer.Health <= 0 {
+					break
+				}
+				if player.Health <= 0 {
+					return
+				}
+
+				// Navigate Bot based on centers of cars
+				myCenter := Point{
+					player.Car.Borders.Points[LEFTUP].X + (player.Car.Borders.Points[RIGHTUP].X-player.Car.Borders.Points[LEFTUP].X)/2,
+					player.Car.Borders.Points[LEFTUP].Y + (player.Car.Borders.Points[LEFTDOWN].Y-player.Car.Borders.Points[LEFTUP].Y)/2,
+				}
+				targetCenter := Point{
+					targetPlayer.Car.Borders.Points[LEFTUP].X + (targetPlayer.Car.Borders.Points[RIGHTUP].X-targetPlayer.Car.Borders.Points[LEFTUP].X)/2,
+					targetPlayer.Car.Borders.Points[LEFTUP].Y + (targetPlayer.Car.Borders.Points[LEFTDOWN].Y-targetPlayer.Car.Borders.Points[LEFTUP].Y)/2,
+				}
+
+				// Chose closet way to the target
+				if targetCenter.X < myCenter.X {
+					// Target is left from us
+					if player.Car.Direction != RIGHT && player.checkOkSide(restPlayers, LEFT) {
+						player.Car.Direction = LEFT
+					} else if targetCenter.Y < myCenter.Y {
+						player.Car.Direction = UP
+					} else {
+						player.Car.Direction = DOWN
+					}
+				} else if targetCenter.X > myCenter.X {
+					// Target is right from us
+					if player.Car.Direction != LEFT && player.checkOkSide(restPlayers, RIGHT) {
+						player.Car.Direction = RIGHT
+					} else if targetCenter.Y < myCenter.Y {
+						player.Car.Direction = UP
+					} else {
+						player.Car.Direction = DOWN
+					}
+				} else if targetCenter.Y < myCenter.Y && player.checkOkSide(restPlayers, UP) {
+					// Target is above us
+					if player.Car.Direction != DOWN {
+						player.Car.Direction = UP
+					} else if targetCenter.X > myCenter.X {
+						player.Car.Direction = RIGHT
+					} else {
+						player.Car.Direction = LEFT
+					}
+				} else if targetCenter.Y > myCenter.Y && player.checkOkSide(restPlayers, DOWN) {
+					// Target it below us
+					if player.Car.Direction != UP {
+						player.Car.Direction = DOWN
+					} else if targetCenter.X > myCenter.X {
+						player.Car.Direction = RIGHT
+					} else {
+						player.Car.Direction = LEFT
+					}
+				}
+			}
+			time.Sleep(time.Duration(500 * time.Millisecond))
+		}
+	}
+}
+
+func (player *Player) checkHitWall() bool {
+	for _, point := range player.Car.Borders.Points {
+		if point.X < 1 || point.X > mapWidth-nameTableWidth || point.Y < 1 || point.Y > mapHeight-1 {
+			player.Health -= DAMAGE_FRONT * player.Car.Speed
+			return true
+		}
+	}
+	return false
+}
+
+func (player *Player) checkHitAnotherCar(round *Round) bool {
+	for _, opponent := range round.Players {
+		if player.Name == opponent.Name {
+			continue
+		}
+
+		if player.Car.Borders.intersects(&opponent.Car.Borders) {
+			switch player.Car.Borders.nextTo(&opponent.Car.Borders, 0) {
+			case LEFT:
+				// Player was hit from LEFT
+				switch player.Car.Direction {
+				case LEFT:
+					// DAMAGE_FRONT crash
+					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+				case RIGHT:
+					// DAMAGE_BACK crash
+					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+				case UP | DOWN:
+					// DAMAGE_SIDE crash
+					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+				}
+			case RIGHT:
+				// Player was hit from RIGHT
+				switch player.Car.Direction {
+				case RIGHT:
+					// DAMAGE_FRONT crash
+					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+				case LEFT:
+					// DAMAGE_BACK crash
+					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+				case UP | DOWN:
+					// DAMAGE_SIDE crash
+					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+				}
+			case UP:
+				// Player was hit from UP
+				switch player.Car.Direction {
+				case UP:
+					// DAMAGE_FRONT crash
+					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+				case DOWN:
+					// DAMAGE_BACK crash
+					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+				case LEFT | RIGHT:
+					// DAMAGE_SIDE crash
+					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+				}
+			case DOWN:
+				// Player was hit from DOWN
+				switch player.Car.Direction {
+				case DOWN:
+					// DAMAGE_FRONT crash
+					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+				case UP:
+					// DAMAGE_BACK crash
+					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+				case LEFT | RIGHT:
+					// DAMAGE_SIDE crash
+					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+				}
+			}
+
+			// Hit in the back
+			if (player.Car.Direction == RIGHT && opponent.Car.Direction == LEFT) ||
+				(player.Car.Direction == LEFT && opponent.Car.Direction == RIGHT) ||
+				(player.Car.Direction == UP && opponent.Car.Direction == DOWN) ||
+				(player.Car.Direction == DOWN && opponent.Car.Direction == UP) {
+				// Face to face
+				player.Health -= DAMAGE_FRONT * player.Car.Speed
+			} else if (player.Car.Direction == RIGHT && opponent.Car.Direction == UP) ||
+				(player.Car.Direction == LEFT && opponent.Car.Direction == UP) ||
+				(player.Car.Direction == RIGHT && opponent.Car.Direction == DOWN) ||
+				(player.Car.Direction == LEFT && opponent.Car.Direction == DOWN) ||
+				(player.Car.Direction == UP && opponent.Car.Direction == RIGHT) ||
+				(player.Car.Direction == UP && opponent.Car.Direction == LEFT) ||
+				(player.Car.Direction == DOWN && opponent.Car.Direction == RIGHT) ||
+				(player.Car.Direction == DOWN && opponent.Car.Direction == LEFT) {
+				// Side hit
+				player.Health -= DAMAGE_SIDE * player.Car.Speed
+			} else {
+				// Back hit
+				player.Health -= DAMAGE_BACK * (player.Car.Speed - opponent.Car.Speed)
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
+func (player *Player) checkHit(round *Round) {
+	if player.checkHitWall() || player.checkHitAnotherCar(round) {
+		player.Car.recalculateBorders(true)
+		player.LastCrash = time.Now().Unix()
+
+		// Bounce player to the opposite direction
+		switch player.Car.Direction {
+		case RIGHT:
+			player.Car.Direction = LEFT
+		case LEFT:
+			player.Car.Direction = RIGHT
+		case UP:
+			player.Car.Direction = DOWN
+		case DOWN:
+			player.Car.Direction = UP
+		}
+	}
+}
+
+func (player *Player) checkHitBonus(round *Round) {
+	bonusRect := &Rectangle{Points: [4]Point{
+		Point{round.Bonus.X, round.Bonus.Y},
+		Point{round.Bonus.X, round.Bonus.Y},
+		Point{round.Bonus.X, round.Bonus.Y},
+		Point{round.Bonus.X, round.Bonus.Y}},
+	}
+	if player.Car.Borders.intersects(bonusRect) {
+		player.Health += bonusPoint
+		player.Car.Speed = maxSpeed
+		round.Bonus.X, round.Bonus.Y = -1, -1
+	}
+}
+
+func (player *Player) checkHitBomb(round *Round) {
+	round.Lock.Lock()
+	for bomb, _ := range round.Bombs {
+		bombRect := &Rectangle{Points: [4]Point{
+			Point{bomb.X, bomb.Y},
+			Point{bomb.X, bomb.Y},
+			Point{bomb.X, bomb.Y},
+			Point{bomb.X, bomb.Y}},
+		}
+
+		if player.Car.Borders.intersects(bombRect) {
+			player.Health -= bonusPoint
+			player.LastCrash = time.Now().Unix()
+			player.Car.Speed = 1
+			delete(round.Bombs, bomb)
+		}
+	}
+	round.Lock.Unlock()
+}
+
+func (player *Player) checkPosition(round *Round) {
+	for {
+		if player.Health <= 0 {
+			return
+		}
+
+		if round.State == RUNNING {
+			// Move player
+			player.Car.recalculateBorders(false)
+
+			// Check if we catch the bonus
+			player.checkHitBonus(round)
+
+			// Check if we hit the bomb
+			player.checkHitBomb(round)
+
+			// Check if we hit something
+			player.checkHit(round)
+		}
+
+		/*
+		 Because vertical symbols are 3x bigger, than horizontal, we need to slowdown recalculation of vertical objects
+		*/
+		slowerDown := int64(1)
+		if player.Car.Direction == UP || player.Car.Direction == DOWN {
+			slowerDown = 3
+		}
+
+		time.Sleep(time.Duration(slowerDown*150/player.Car.Speed) * time.Millisecond)
+	}
+}
+
+func (player *Player) checkSpeed() {
+	for {
+		if player.Health <= 0 {
+			return
+		}
+		now := time.Now().Unix()
+		if now-player.LastCrash > player.Car.Speed*2 && player.Car.Speed < maxSpeed {
+			player.Car.Speed++
+		} else if now-player.LastCrash < 2 {
+			player.Car.Speed = 1
+		}
+		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
+	}
+}
