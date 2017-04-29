@@ -66,9 +66,9 @@ const (
 
 // Damage points
 const (
-	DAMAGE_FRONT = 1
 	DAMAGE_BACK  = 2
-	DAMAGE_SIDE  = 4
+	DAMAGE_FRONT = 4
+	DAMAGE_SIDE  = 6
 )
 
 // Colors
@@ -148,11 +148,6 @@ func getPlayerData(conn net.Conn, splash []byte) (Player, error) {
 	return Player{Conn: conn, BotReady: true, Name: name, Health: 100, Car: Car{Speed: 1}}, nil
 }
 
-func generateBot() Player {
-	// Get data of player and return the structure
-	return Player{Name: fmt.Sprintf("Bot %d", rand.Intn(100)+1), Health: 1, Bot: true, Car: Car{Speed: 1}}
-}
-
 func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 	fmt.Println("compile/waiting rounds:", len(compileRoundChannel))
 	for r := range compileRoundChannel {
@@ -194,7 +189,7 @@ func checkRoundRun(runningRoundChannel chan Round) {
 	for {
 		for round := range runningRoundChannel {
 			for len(round.Players) < maxPlayersPerRound {
-				p := generateBot()
+				p := round.generateBot()
 				p.initPlayer(len(round.Players))
 				round.Players = append(round.Players, p)
 			}

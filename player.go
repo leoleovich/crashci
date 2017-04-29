@@ -82,6 +82,15 @@ func (p *Player) checkBestRoundForPlayer(round chan Round) {
 	}
 }
 
+func (player *Player) searchDuplicateName(round *Round) bool {
+	for _, pl := range round.Players {
+		if player.Name == pl.Name {
+			return true
+		}
+	}
+	return false
+}
+
 func (player *Player) readDirection(round *Round) {
 	if initTelnet(player.Conn) != nil {
 		return
@@ -293,52 +302,52 @@ func (player *Player) checkHitAnotherCar(round *Round) bool {
 				switch player.Car.Direction {
 				case LEFT:
 					// DAMAGE_FRONT crash
-					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+					player.Health -= DAMAGE_FRONT * player.Car.Speed
 				case RIGHT:
 					// DAMAGE_BACK crash
-					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+					player.Health -= DAMAGE_BACK * (maxSpeed - player.Car.Speed)
 				case UP | DOWN:
 					// DAMAGE_SIDE crash
-					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+					player.Health -= DAMAGE_SIDE
 				}
 			case RIGHT:
 				// Player was hit from RIGHT
 				switch player.Car.Direction {
 				case RIGHT:
 					// DAMAGE_FRONT crash
-					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+					player.Health -= DAMAGE_FRONT * player.Car.Speed
 				case LEFT:
 					// DAMAGE_BACK crash
-					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+					player.Health -= DAMAGE_BACK * (maxSpeed - player.Car.Speed)
 				case UP | DOWN:
 					// DAMAGE_SIDE crash
-					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+					player.Health -= DAMAGE_SIDE
 				}
 			case UP:
 				// Player was hit from UP
 				switch player.Car.Direction {
 				case UP:
 					// DAMAGE_FRONT crash
-					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+					player.Health -= DAMAGE_FRONT * player.Car.Speed
 				case DOWN:
 					// DAMAGE_BACK crash
-					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+					player.Health -= DAMAGE_BACK * (maxSpeed - player.Car.Speed)
 				case LEFT | RIGHT:
 					// DAMAGE_SIDE crash
-					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+					player.Health -= DAMAGE_SIDE
 				}
 			case DOWN:
 				// Player was hit from DOWN
 				switch player.Car.Direction {
 				case DOWN:
 					// DAMAGE_FRONT crash
-					player.Health -= DAMAGE_FRONT * opponent.Car.Speed
+					player.Health -= DAMAGE_FRONT * player.Car.Speed
 				case UP:
 					// DAMAGE_BACK crash
-					player.Health -= DAMAGE_BACK * (opponent.Car.Speed - player.Car.Speed)
+					player.Health -= DAMAGE_BACK * (maxSpeed - player.Car.Speed)
 				case LEFT | RIGHT:
 					// DAMAGE_SIDE crash
-					player.Health -= DAMAGE_SIDE * opponent.Car.Speed
+					player.Health -= DAMAGE_SIDE
 				}
 			}
 

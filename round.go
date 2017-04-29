@@ -38,6 +38,17 @@ func (round *Round) generateMap() {
 	}
 }
 
+func (round *Round) generateBot() Player {
+	// Get data of player and return the structure
+
+	for {
+		p := Player{Name: fmt.Sprintf("Bot %d", rand.Intn(10)+1), Health: 100, Bot: true, Car: Car{Speed: 1}}
+		if !p.searchDuplicateName(round) {
+			return p
+		}
+	}
+}
+
 func (round *Round) getPlayersExcept(exceptions []Player) []*Player {
 	var rest []*Player
 	for i := range round.Players {
