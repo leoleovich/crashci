@@ -18,6 +18,7 @@ type Round struct {
 }
 
 func (round *Round) generateMap() {
+// http://www.theasciicode.com.ar
 	for row := 0; row < mapHeight; row++ {
 		for column := 0; column < mapWidth; column++ {
 			var char []byte
