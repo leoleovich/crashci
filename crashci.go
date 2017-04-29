@@ -234,14 +234,14 @@ func prepareRound(conn net.Conn, splash []byte, compileRoundChannel, runningRoun
 func main() {
 	// Make random unique
 	rand.Seed(time.Now().Unix())
-	var logFile string
+	var logFile, acidPath string
 
 	flag.StringVar(&logFile, "l", "/var/log/race.log", "Log file")
 	flag.StringVar(&conf.AcidPath, "a", "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts", "Artifacts location")
 	flag.Parse()
 
 	logfile, err := os.OpenFile("/var/log/crashci.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
-	conf = Config{log.New(logfile, "", log.Ldate|log.Lmicroseconds|log.Lshortfile), "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts"}
+	conf = Config{log.New(logfile, "", log.Ldate|log.Lmicroseconds|log.Lshortfile), acidPath}
 
 	l, err := net.Listen("tcp", ":4242")
 	if err != nil {
