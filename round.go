@@ -18,7 +18,7 @@ type Round struct {
 }
 
 func (round *Round) generateMap() {
-// http://www.theasciicode.com.ar
+	// http://www.theasciicode.com.ar
 	for row := 0; row < mapHeight; row++ {
 		for column := 0; column < mapWidth; column++ {
 			var char []byte
@@ -143,7 +143,7 @@ func (round *Round) applyBonus(activeFrameBuffer []Symbol) {
 		return
 	}
 	if round.Bonus.X == -1 && round.Bonus.Y == -1 {
-		if rand.Int()%factor == 0 {
+		if rand.Int()%lowFactor == 0 {
 			round.Bonus = Point{rand.Intn(mapWidth-nameTableWidth-2) + 1, rand.Intn(mapHeight-2) + 1}
 		}
 	} else {

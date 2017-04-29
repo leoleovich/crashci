@@ -35,7 +35,7 @@ func (car *Car) recalculateBorders(crash bool) {
 	case RIGHT:
 		for i := range car.Borders.Points {
 			if crash {
-				car.Borders.Points[i].X -= horizontalCarWidth
+				car.Borders.Points[i].X--
 			} else {
 				car.Borders.Points[i].X++
 			}
@@ -43,7 +43,7 @@ func (car *Car) recalculateBorders(crash bool) {
 	case LEFT:
 		for i, _ := range car.Borders.Points {
 			if crash {
-				car.Borders.Points[i].X += horizontalCarWidth
+				car.Borders.Points[i].X++
 			} else {
 				car.Borders.Points[i].X--
 			}
@@ -51,7 +51,7 @@ func (car *Car) recalculateBorders(crash bool) {
 	case UP:
 		for i, _ := range car.Borders.Points {
 			if crash {
-				car.Borders.Points[i].Y += verticalCarHeight
+				car.Borders.Points[i].Y++
 			} else {
 				car.Borders.Points[i].Y--
 			}
@@ -59,7 +59,7 @@ func (car *Car) recalculateBorders(crash bool) {
 	case DOWN:
 		for i, _ := range car.Borders.Points {
 			if crash {
-				car.Borders.Points[i].Y -= verticalCarHeight
+				car.Borders.Points[i].Y--
 			} else {
 				car.Borders.Points[i].Y++
 			}

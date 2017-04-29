@@ -173,17 +173,66 @@ func (player *Player) checkOkSide(players []*Player, side int) bool {
 	return true
 }
 
+func (player *Player) navigateBot(myCenter, targetCenter *Point, restPlayers []*Player) {
+	// Chose closet way to the target
+	if targetCenter.X < myCenter.X {
+		// Target is left from us
+		if player.Car.Direction != RIGHT && player.checkOkSide(restPlayers, LEFT) {
+			player.Car.Direction = LEFT
+		} else if targetCenter.Y < myCenter.Y {
+			player.Car.Direction = UP
+		} else {
+			player.Car.Direction = DOWN
+		}
+	} else if targetCenter.X > myCenter.X {
+		// Target is right from us
+		if player.Car.Direction != LEFT && player.checkOkSide(restPlayers, RIGHT) {
+			player.Car.Direction = RIGHT
+		} else if targetCenter.Y < myCenter.Y {
+			player.Car.Direction = UP
+		} else {
+			player.Car.Direction = DOWN
+		}
+	} else if targetCenter.Y < myCenter.Y && player.checkOkSide(restPlayers, UP) {
+		// Target is above us
+		if player.Car.Direction != DOWN {
+			player.Car.Direction = UP
+		} else if targetCenter.X > myCenter.X {
+			player.Car.Direction = RIGHT
+		} else {
+			player.Car.Direction = LEFT
+		}
+	} else if targetCenter.Y > myCenter.Y && player.checkOkSide(restPlayers, DOWN) {
+		// Target it below us
+		if player.Car.Direction != UP {
+			player.Car.Direction = DOWN
+		} else if targetCenter.X > myCenter.X {
+			player.Car.Direction = RIGHT
+		} else {
+			player.Car.Direction = LEFT
+		}
+	}
+}
+
 func (player *Player) moveBot(round *Round) {
 	for {
 		targetPlayer := &round.Players[round.getRandomNonBotPlayerId()]
-		restPlayers := round.getPlayersExcept([]Player{*targetPlayer, *player})
+		allPlayersExceptMeAndTarget := round.getPlayersExcept([]Player{*targetPlayer, *player})
+		allPlayersExceptMe := append(allPlayersExceptMeAndTarget, targetPlayer)
 
+		heartRect := &Rectangle{Points: [4]Point{
+			Point{round.Bonus.X, round.Bonus.Y},
+			Point{round.Bonus.X, round.Bonus.Y},
+			Point{round.Bonus.X, round.Bonus.Y},
+			Point{round.Bonus.X, round.Bonus.Y}},
+		}
+		targetCenter := &Point{}
 		for i := 0; i < 20; i++ {
 			if round.State == FINISHED {
 				return
 			} else if round.State == RUNNING {
 				// Check if BOT is throwing the bomb
-				if player.Bombs > 0 && rand.Int()%factor == 0 {
+				if player.Bombs > 0 && rand.Int()%highFactor == 0 {
 					player.DropBomb = true
 				}
 
@@ -196,53 +245,25 @@ func (player *Player) moveBot(round *Round) {
 				}
 
 				// Navigate Bot based on centers of cars
-				myCenter := Point{
+				myCenter := &Point{
 					player.Car.Borders.Points[LEFTUP].X + (player.Car.Borders.Points[RIGHTUP].X-player.Car.Borders.Points[LEFTUP].X)/2,
 					player.Car.Borders.Points[LEFTUP].Y + (player.Car.Borders.Points[LEFTDOWN].Y-player.Car.Borders.Points[LEFTUP].Y)/2,
 				}
-				targetCenter := Point{
-					targetPlayer.Car.Borders.Points[LEFTUP].X + (targetPlayer.Car.Borders.Points[RIGHTUP].X-targetPlayer.Car.Borders.Points[LEFTUP].X)/2,
-					targetPlayer.Car.Borders.Points[LEFTUP].Y + (targetPlayer.Car.Borders.Points[LEFTDOWN].Y-targetPlayer.Car.Borders.Points[LEFTUP].Y)/2,
+
+				// Check if heart next to Bot
+				heartOnSide := player.Car.Borders.nextTo(heartRect, 5)
+				// Bot prefers to grab the heart
+				if heartOnSide != -1 && round.Bonus.X != -1 && round.Bonus.Y != -1 {
+					targetCenter = &Point{round.Bonus.X, round.Bonus.Y}
+				} else {
+					targetCenter = &Point{
+						targetPlayer.Car.Borders.Points[LEFTUP].X + (targetPlayer.Car.Borders.Points[RIGHTUP].X-targetPlayer.Car.Borders.Points[LEFTUP].X)/2,
+						targetPlayer.Car.Borders.Points[LEFTUP].Y + (targetPlayer.Car.Borders.Points[LEFTDOWN].Y-targetPlayer.Car.Borders.Points[LEFTUP].Y)/2,
+					}
 				}
 
-				// Chose closet way to the target
-				if targetCenter.X < myCenter.X {
-					// Target is left from us
-					if player.Car.Direction != RIGHT && player.checkOkSide(restPlayers, LEFT) {
-						player.Car.Direction = LEFT
-					} else if targetCenter.Y < myCenter.Y {
-						player.Car.Direction = UP
-					} else {
-						player.Car.Direction = DOWN
-					}
-				} else if targetCenter.X > myCenter.X {
-					// Target is right from us
-					if player.Car.Direction != LEFT && player.checkOkSide(restPlayers, RIGHT) {
-						player.Car.Direction = RIGHT
-					} else if targetCenter.Y < myCenter.Y {
-						player.Car.Direction = UP
-					} else {
-						player.Car.Direction = DOWN
-					}
-				} else if targetCenter.Y < myCenter.Y && player.checkOkSide(restPlayers, UP) {
-					// Target is above us
-					if player.Car.Direction != DOWN {
-						player.Car.Direction = UP
-					} else if targetCenter.X > myCenter.X {
-						player.Car.Direction = RIGHT
-					} else {
-						player.Car.Direction = LEFT
-					}
-				} else if targetCenter.Y > myCenter.Y && player.checkOkSide(restPlayers, DOWN) {
-					// Target it below us
-					if player.Car.Direction != UP {
-						player.Car.Direction = DOWN
-					} else if targetCenter.X > myCenter.X {
-						player.Car.Direction = RIGHT
-					} else {
-						player.Car.Direction = LEFT
-					}
-				}
+				player.navigateBot(myCenter, targetCenter, allPlayersExceptMe)
+
 			}
 			time.Sleep(time.Duration(500 * time.Millisecond))
 		}
@@ -497,7 +518,7 @@ func (player *Player) checkBomb(round *Round) {
 					round.Bombs[bombPosition] = true
 					round.Lock.Unlock()
 				}
-			} else if rand.Int()%(factor*10) == 0 && round.State == RUNNING {
+			} else if rand.Int()%(highFactor*lowFactor) == 0 && round.State == RUNNING {
 				round.Players[num].Bombs++
 			}
 		}

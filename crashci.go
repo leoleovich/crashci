@@ -23,7 +23,8 @@ const maxRoundRunningTimeSec = 600
 const maxSpeed = 5
 
 const bonusPoint = 5
-const factor = 100
+const lowFactor = 50
+const highFactor = 5
 
 const mapWidth = 179
 const mapHeight = 38
