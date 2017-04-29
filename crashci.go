@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -90,6 +91,7 @@ var clear = []byte{27, 91, 50, 74}
 
 // [14A[100D
 var middle = []byte{27, 91, 49, 52, 65, 27, 91, 57, 52, 68}
+var conf Config
 
 type Config struct {
 	Log      *log.Logger
@@ -107,7 +109,7 @@ type Symbol struct {
 
 type Symbols []Symbol
 
-func getAcid(conf *Config, fileName string) ([]byte, error) {
+func getAcid(fileName string) ([]byte, error) {
 	fileStat, err := os.Stat(conf.AcidPath + "/" + fileName)
 	if err != nil {
 		conf.Log.Printf("Acid %s does not exist: %v\n", fileName, err)
@@ -232,9 +234,15 @@ func prepareRound(conn net.Conn, splash []byte, compileRoundChannel, runningRoun
 func main() {
 	// Make random unique
 	rand.Seed(time.Now().Unix())
+	var logFile string
+
+	flag.StringVar(&logFile, "l", "/var/log/race.log", "Log file")
+	flag.StringVar(&conf.AcidPath, "a", "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts", "Artifacts location")
+	flag.Parse()
 
 	logfile, err := os.OpenFile("/var/log/crashci.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
-	conf := &Config{log.New(logfile, "", log.Ldate|log.Lmicroseconds|log.Lshortfile), "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts"}
+	conf = Config{log.New(logfile, "", log.Ldate|log.Lmicroseconds|log.Lshortfile), "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts"}
+
 	l, err := net.Listen("tcp", ":4242")
 	if err != nil {
 		os.Exit(2)
@@ -242,11 +250,11 @@ func main() {
 	defer l.Close()
 
 	// Read sketches
-	cars[LEFT], _ = getAcid(conf, "carLeft.txt")
-	cars[RIGHT], _ = getAcid(conf, "carRight.txt")
-	cars[UP], _ = getAcid(conf, "carUp.txt")
-	cars[DOWN], _ = getAcid(conf, "carDown.txt")
-	splash, _ := getAcid(conf, "splash.txt")
+	cars[LEFT], _ = getAcid("carLeft.txt")
+	cars[RIGHT], _ = getAcid("carRight.txt")
+	cars[UP], _ = getAcid("carUp.txt")
+	cars[DOWN], _ = getAcid("carDown.txt")
+	splash, _ := getAcid("splash.txt")
 
 	compileRoundChannel := make(chan Round, maxParallelRounds)
 	runningRoundChannel := make(chan Round, maxParallelRounds)
