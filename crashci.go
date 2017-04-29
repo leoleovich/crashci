@@ -237,7 +237,7 @@ func main() {
 	var logFile, acidPath string
 
 	flag.StringVar(&logFile, "l", "/var/log/race.log", "Log file")
-	flag.StringVar(&conf.AcidPath, "a", "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts", "Artifacts location")
+	flag.StringVar(&acidPath, "a", "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts", "Artifacts location")
 	flag.Parse()
 
 	logfile, err := os.OpenFile("/var/log/crashci.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
