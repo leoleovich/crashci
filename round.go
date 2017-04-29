@@ -20,19 +20,19 @@ type Round struct {
 func (round *Round) generateMap() {
 	for row := 0; row < mapHeight; row++ {
 		for column := 0; column < mapWidth; column++ {
-			var char byte
+			var char []byte
 			if (row == 0 || row == mapHeight-1) && column < mapWidth-2 {
-				char = byte('-')
+				char = []byte("─")
 			} else if column == 0 || column == mapWidth-3 || column == mapWidth-nameTableWidth {
-				char = byte('|')
+				char = []byte("│")
 			} else if column == mapWidth-2 {
-				char = byte('\r')
+				char = []byte("\r")
 			} else if column == mapWidth-1 {
-				char = byte('\n')
+				char = []byte("\n")
 			} else {
-				char = byte(' ')
+				char = []byte(" ")
 			}
-			round.FrameBuffer[row*mapWidth+column] = Symbol{0, []byte{char}}
+			round.FrameBuffer[row*mapWidth+column] = Symbol{0, char}
 		}
 	}
 }
