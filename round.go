@@ -78,10 +78,11 @@ func (round *Round) gameLogic() {
 	}
 }
 
-func (round *Round) checkGameOver() {
+func (round *Round) checkGameOver(activeFrameBuffer Symbols) {
 	humans := 0
 	deadHumans := 0
 	deadPlayers := 0
+	winnersName := ""
 
 	for _, p := range round.Players {
 		if p.Health <= 0 {
@@ -92,12 +93,22 @@ func (round *Round) checkGameOver() {
 			humans++
 			if p.Health <= 0 {
 				deadHumans++
+			} else {
+				winnersName = p.Name
 			}
 		}
 	}
 
 	secondsLeft := round.LastStateChange.Unix() + maxRoundRunningTimeSec - time.Now().Unix()
 	if humans == deadHumans || maxPlayersPerRound-deadPlayers == 1 || secondsLeft <= 0 {
+		if maxPlayersPerRound-deadPlayers == 1 {
+			winnerStr := "THE WINNER IS " + winnersName + "!!!"
+			for i, char := range []byte(winnerStr) {
+				activeFrameBuffer[mapWidth*(mapHeight/2-2)+mapWidth/2-len(winnerStr)/2+i] = Symbol{GREEN, []byte{char}}
+			}
+			round.writeToAllPlayers(activeFrameBuffer.symbolsToByte(), false)
+			time.Sleep(5 * time.Second)
+		}
 		round.State = FINISHED
 		fmt.Println("Round has changed to the state FINISHED")
 	}
@@ -254,7 +265,7 @@ func (round Round) start() {
 
 		round.writeToAllPlayers(activeFrameBuffer.symbolsToByte(), false)
 
-		round.checkGameOver()
+		round.checkGameOver(activeFrameBuffer)
 		if round.State == FINISHED {
 			round.over()
 			return

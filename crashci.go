@@ -150,7 +150,7 @@ func getPlayerData(conn net.Conn, splash []byte) (Player, error) {
 
 func generateBot() Player {
 	// Get data of player and return the structure
-	return Player{Name: fmt.Sprintf("Bot %d", rand.Intn(100)+1), Health: 100, Bot: true, Car: Car{Speed: 1}}
+	return Player{Name: fmt.Sprintf("Bot %d", rand.Intn(100)+1), Health: 1, Bot: true, Car: Car{Speed: 1}}
 }
 
 func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
