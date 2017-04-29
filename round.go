@@ -157,7 +157,7 @@ func (round *Round) applyBombs(activeFrameBuffer []Symbol, lineBetweenPlayersInB
 
 	round.Lock.Lock()
 	for b, _ := range round.Bombs {
-		activeFrameBuffer[b.Y*mapWidth+b.X] = Symbol{RED, []byte(bomb)}
+		activeFrameBuffer[b.Y*mapWidth+b.X] = Symbol{BOLD, []byte(bomb)}
 	}
 	round.Lock.Unlock()
 }
