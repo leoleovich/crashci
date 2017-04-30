@@ -235,15 +235,17 @@ func main() {
 	// Make random unique
 	rand.Seed(time.Now().Unix())
 	var logFile, acidPath string
+	var port int
 
 	flag.StringVar(&logFile, "l", "/var/log/race.log", "Log file")
+	flag.IntVar(&port, "p", 4242, "Port to listen")
 	flag.StringVar(&acidPath, "a", "/Users/leoleovich/go/src/github.com/leoleovich/crashci/artifacts", "Artifacts location")
 	flag.Parse()
 
-	logfile, err := os.OpenFile("/var/log/crashci.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+	logfile, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 	conf = Config{log.New(logfile, "", log.Ldate|log.Lmicroseconds|log.Lshortfile), acidPath}
 
-	l, err := net.Listen("tcp", ":4242")
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		os.Exit(2)
 	}

@@ -283,5 +283,4 @@ func (round Round) start() {
 		}
 		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
 	}
-
 }
