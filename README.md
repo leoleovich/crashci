@@ -1,5 +1,5 @@
 # Description
-`telnet localhost 4242` (see see [#Try it](https://github.com/crashci/race#try-it) for live demo)  
+`telnet localhost 4242` (see see [#Try it](https://github.com/leoleovich/crashci#try-it) for live demo)  
 Car deathmatch multiplayer game based on telnet:
 
 ![](https://raw.githubusercontent.com/leoleovich/images/master/crashci.png)
