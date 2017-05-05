@@ -40,6 +40,16 @@ const colorPostfix = "m"
 const bonus = "\xE2\x99\xA5"
 const bomb = "\xE2\x9C\xB3"
 
+var (
+	cars = [4][]byte{}
+	// http://www.isthe.com/chongo/tech/comp/ansi_escapes.html
+	home  = []byte{27, 91, 72}
+	clear = []byte{27, 91, 50, 74}
+	// [14A[100D
+	middle = []byte{27, 91, 49, 52, 65, 27, 91, 57, 52, 68}
+	conf   Config
+)
+
 // States of the round
 const (
 	COMPILING = 1 + iota
@@ -74,24 +84,14 @@ const (
 
 // Colors
 const (
-	RESET   = 0
-	BOLD    = 1
-	RED     = 31
-	GREEN   = 32
-	YELLOW  = 33
-	BLUE    = 34
-	MAGENTA = 35
+	RESET = 0
+	BOLD  = 1
+	RED   = 31
+	GREEN = 32
+	//YELLOW  = 33
+	//BLUE    = 34
+	//MAGENTA = 35
 )
-
-var cars = [4][]byte{}
-
-// http://www.isthe.com/chongo/tech/comp/ansi_escapes.html
-var home = []byte{27, 91, 72}
-var clear = []byte{27, 91, 50, 74}
-
-// [14A[100D
-var middle = []byte{27, 91, 49, 52, 65, 27, 91, 57, 52, 68}
-var conf Config
 
 type Config struct {
 	Log      *log.Logger
@@ -215,7 +215,7 @@ func (symbols Symbols) symbolsToByte() []byte {
 	return returnSlice
 }
 
-func prepareRound(conn net.Conn, splash []byte, compileRoundChannel, runningRoundChannel chan Round) {
+func prepareRound(conn net.Conn, splash []byte, compileRoundChannel chan Round) {
 	// Check for name and stuff. Ask if he agrees to play with bots
 	p, err := getPlayerData(conn, splash)
 	if err != nil {
@@ -270,7 +270,7 @@ func main() {
 			conf.Log.Println("Failed to accept request", err)
 		}
 
-		go prepareRound(conn, splash, compileRoundChannel, runningRoundChannel)
+		go prepareRound(conn, splash, compileRoundChannel)
 
 	}
 }
