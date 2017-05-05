@@ -179,7 +179,7 @@ func (round *Round) applyBombs(activeFrameBuffer []Symbol, lineBetweenPlayersInB
 	}
 
 	round.Lock.Lock()
-	for b, _ := range round.Bombs {
+	for b := range round.Bombs {
 		activeFrameBuffer[b.Y*mapWidth+b.X] = Symbol{BOLD, []byte(bomb)}
 	}
 	round.Lock.Unlock()
@@ -225,6 +225,11 @@ func (round *Round) applyGetReady(activeFrameBuffer []Symbol, getReadyCounter *i
 }
 
 func (round *Round) applyCars(activeMap []Symbol) {
+	// Do not care about errors with moving away from slice
+	defer func() {
+		recover()
+	}()
+
 	for _, player := range round.Players {
 		charPosX, charPosY := 0, 0
 		for i := 0; i < len(cars[player.Car.Direction]); i++ {
