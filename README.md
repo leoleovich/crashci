@@ -12,3 +12,7 @@ Telnet
 
 # Try it
 `telnet protury.info 4242`
+
+# Routines
+Watch video about concurrency in crashci:  
+[![](https://img.youtube.com/vi/x5hp8bBidfg/0.jpg)](https://www.youtube.com/watch?v=x5hp8bBidfg)
