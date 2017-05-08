@@ -230,10 +230,10 @@ func (player *Player) moveBot(round *Round) {
 		allPlayersExceptMe := append(allPlayersExceptMeAndTarget, targetPlayer)
 
 		heartRect := &Rectangle{Points: [4]Point{
-			Point{round.Bonus.X, round.Bonus.Y},
-			Point{round.Bonus.X, round.Bonus.Y},
-			Point{round.Bonus.X, round.Bonus.Y},
-			Point{round.Bonus.X, round.Bonus.Y}},
+			{round.Bonus.X, round.Bonus.Y},
+			{round.Bonus.X, round.Bonus.Y},
+			{round.Bonus.X, round.Bonus.Y},
+			{round.Bonus.X, round.Bonus.Y}},
 		}
 		targetCenter := &Point{}
 		for i := 0; i < 20; i++ {
@@ -400,10 +400,10 @@ func (player *Player) checkHit(round *Round) {
 
 func (player *Player) checkHitBonus(round *Round) {
 	bonusRect := &Rectangle{Points: [4]Point{
-		Point{round.Bonus.X, round.Bonus.Y},
-		Point{round.Bonus.X, round.Bonus.Y},
-		Point{round.Bonus.X, round.Bonus.Y},
-		Point{round.Bonus.X, round.Bonus.Y}},
+		{round.Bonus.X, round.Bonus.Y},
+		{round.Bonus.X, round.Bonus.Y},
+		{round.Bonus.X, round.Bonus.Y},
+		{round.Bonus.X, round.Bonus.Y}},
 	}
 	if player.Car.Borders.intersects(bonusRect) {
 		player.Health += bonusPoint
@@ -413,13 +413,13 @@ func (player *Player) checkHitBonus(round *Round) {
 }
 
 func (player *Player) checkHitBomb(round *Round) {
-	round.Lock.Lock()
-	for bomb, _ := range round.Bombs {
+	round.Lock()
+	for bomb := range round.Bombs {
 		bombRect := &Rectangle{Points: [4]Point{
-			Point{bomb.X, bomb.Y},
-			Point{bomb.X, bomb.Y},
-			Point{bomb.X, bomb.Y},
-			Point{bomb.X, bomb.Y}},
+			{bomb.X, bomb.Y},
+			{bomb.X, bomb.Y},
+			{bomb.X, bomb.Y},
+			{bomb.X, bomb.Y}},
 		}
 
 		if player.Car.Borders.intersects(bombRect) {
@@ -429,7 +429,7 @@ func (player *Player) checkHitBomb(round *Round) {
 			delete(round.Bombs, bomb)
 		}
 	}
-	round.Lock.Unlock()
+	round.Unlock()
 }
 
 func (player *Player) checkPosition(round *Round) {
@@ -523,9 +523,9 @@ func (player *Player) checkBomb(round *Round) {
 				if bombPosition.X > 1 && bombPosition.X < mapWidth-nameTableWidth-1 && bombPosition.Y > 1 && bombPosition.Y < mapHeight-1 {
 					round.Players[num].DropBomb = false
 					round.Players[num].Bombs--
-					round.Lock.Lock()
+					round.Lock()
 					round.Bombs[bombPosition] = true
-					round.Lock.Unlock()
+					round.Unlock()
 				}
 			} else if rand.Int()%(highFactor*lowFactor) == 0 && round.State == RUNNING {
 				round.Players[num].Bombs++

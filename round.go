@@ -14,7 +14,7 @@ type Round struct {
 	Bonus           Point
 	Bombs           map[Point]bool
 	FrameBuffer     Symbols
-	Lock            sync.Mutex
+	sync.Mutex
 }
 
 func (round *Round) generateMap() {
@@ -178,11 +178,11 @@ func (round *Round) applyBombs(activeFrameBuffer []Symbol, lineBetweenPlayersInB
 		return
 	}
 
-	round.Lock.Lock()
+	round.Lock()
 	for b := range round.Bombs {
 		activeFrameBuffer[b.Y*mapWidth+b.X] = Symbol{BOLD, []byte(bomb)}
 	}
-	round.Lock.Unlock()
+	round.Unlock()
 }
 
 func (round *Round) applyUserData(activeFrameBuffer []Symbol, lineBetweenPlayersInBar int) {
