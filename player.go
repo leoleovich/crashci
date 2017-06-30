@@ -13,7 +13,6 @@ type Player struct {
 	LastCrash int64
 	Color     int
 	Bot       bool
-	BotReady  bool
 	Bombs     int
 	DropBomb  bool
 	Car       Car
@@ -68,17 +67,31 @@ func (p *Player) initPlayer(id int) {
 	p.Color = RED + id
 }
 
-func (p *Player) checkBestRoundForPlayer(round chan Round) {
-	// TODO: Do not assign players with the same name in the same round!!
-	for r := range round {
-		if len(r.Players) < maxPlayersPerRound {
-			p.initPlayer(len(r.Players))
-			r.Players = append(r.Players, *p)
-			round <- r
-			break
-		} else {
-			round <- r
+func (p *Player) checkBestRoundForPlayer(compileRoundChannel chan Round) {
+	foundRoundForUser := false
+	for i:=0; i<len(compileRoundChannel); i++ {
+		select {
+		case r := <-compileRoundChannel:
+			// If any round is "compiling" now
+			if len(r.Players) < maxPlayersPerRound && !p.searchDuplicateName(&r)  {
+				p.initPlayer(len(r.Players))
+				r.Players = append(r.Players, *p)
+				compileRoundChannel <- r
+				foundRoundForUser = true
+				break
+			} else {
+				compileRoundChannel <- r
+			}
+		default:
 		}
+	}
+
+	if !foundRoundForUser {
+		// We need a new round
+		r := Round{State: COMPILING, FrameBuffer: make([]Symbol, mapWidth*mapHeight), Bonus: Point{-1, -1}, Bombs: make(map[Point]bool)}
+		p.initPlayer(len(r.Players))
+		r.Players = append(r.Players, *p)
+		compileRoundChannel <- r
 	}
 }
 

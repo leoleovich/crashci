@@ -147,19 +147,14 @@ func getPlayerData(conn net.Conn, splash []byte) (Player, error) {
 		return Player{}, errors.New("Too long name")
 	}
 
-	return Player{Conn: conn, BotReady: true, Name: name, Health: 100, Car: Car{Speed: 1}}, nil
+	return Player{Conn: conn, Name: name, Health: 100, Car: Car{Speed: 1}}, nil
 }
 
 func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
-	fmt.Println("compile/waiting rounds:", len(compileRoundChannel))
-	for r := range compileRoundChannel {
-		botReady := 0
+	for {
+		fmt.Println("compile/waiting rounds:", len(compileRoundChannel))
+		r := <- compileRoundChannel
 		fmt.Println("players in round:", len(r.Players))
-		for _, player := range r.Players {
-			if player.BotReady {
-				botReady++
-			}
-		}
 
 		if len(r.Players) == maxPlayersPerRound ||
 			(r.State == WAITING && r.LastStateChange.Add(maxRoundWaitingTimeSec*time.Second).Before(time.Now())) {
@@ -168,7 +163,7 @@ func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 			r.State = STARTING
 			r.LastStateChange = time.Now()
 			runningRoundChannel <- r
-		} else if botReady == len(r.Players) && len(r.Players) >= minPlayersPerRound {
+		} else if len(r.Players) >= minPlayersPerRound {
 			if r.State == COMPILING {
 				fmt.Println("Round has changed to the state WAITING")
 				r.State = WAITING
@@ -189,14 +184,13 @@ func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 
 func checkRoundRun(runningRoundChannel chan Round) {
 	for {
-		for round := range runningRoundChannel {
-			for len(round.Players) < maxPlayersPerRound {
-				p := round.generateBot()
-				p.initPlayer(len(round.Players))
-				round.Players = append(round.Players, p)
-			}
-			go round.start()
+		round := <- runningRoundChannel
+		for len(round.Players) < maxPlayersPerRound {
+			p := round.generateBot()
+			p.initPlayer(len(round.Players))
+			round.Players = append(round.Players, p)
 		}
+		go round.start()
 	}
 }
 
@@ -215,17 +209,11 @@ func (symbols Symbols) symbolsToByte() []byte {
 	return returnSlice
 }
 
-func prepareRound(conn net.Conn, splash []byte, compileRoundChannel chan Round) {
-	// Check for name and stuff. Ask if he agrees to play with bots
+func prepare(conn net.Conn, splash []byte, compileRoundChannel chan Round) {
 	p, err := getPlayerData(conn, splash)
 	if err != nil {
 		conn.Close()
 		return
-	}
-
-	if len(compileRoundChannel) == 0 {
-		r := Round{State: COMPILING, FrameBuffer: make([]Symbol, mapWidth*mapHeight), Bonus: Point{-1, -1}, Bombs: make(map[Point]bool)}
-		compileRoundChannel <- r
 	}
 
 	p.checkBestRoundForPlayer(compileRoundChannel)
@@ -270,7 +258,6 @@ func main() {
 			conf.Log.Println("Failed to accept request", err)
 		}
 
-		go prepareRound(conn, splash, compileRoundChannel)
-
+		go prepare(conn, splash, compileRoundChannel)
 	}
 }
