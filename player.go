@@ -69,11 +69,11 @@ func (p *Player) initPlayer(id int) {
 
 func (p *Player) checkBestRoundForPlayer(compileRoundChannel chan Round) {
 	foundRoundForUser := false
-	for i:=0; i<len(compileRoundChannel); i++ {
+	for i := 0; i < len(compileRoundChannel); i++ {
 		select {
 		case r := <-compileRoundChannel:
 			// If any round is "compiling" now
-			if len(r.Players) < maxPlayersPerRound && !p.searchDuplicateName(&r)  {
+			if len(r.Players) < maxPlayersPerRound && !p.searchDuplicateName(&r) {
 				p.initPlayer(len(r.Players))
 				r.Players = append(r.Players, *p)
 				compileRoundChannel <- r

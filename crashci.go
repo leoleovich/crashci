@@ -153,7 +153,7 @@ func getPlayerData(conn net.Conn, splash []byte) (Player, error) {
 func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 	for {
 		fmt.Println("compile/waiting rounds:", len(compileRoundChannel))
-		r := <- compileRoundChannel
+		r := <-compileRoundChannel
 		fmt.Println("players in round:", len(r.Players))
 
 		if len(r.Players) == maxPlayersPerRound ||
@@ -184,7 +184,7 @@ func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 
 func checkRoundRun(runningRoundChannel chan Round) {
 	for {
-		round := <- runningRoundChannel
+		round := <-runningRoundChannel
 		for len(round.Players) < maxPlayersPerRound {
 			p := round.generateBot()
 			p.initPlayer(len(round.Players))
