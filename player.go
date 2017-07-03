@@ -241,7 +241,12 @@ func (player *Player) moveBot(round *Round) {
 		if player.Health <= 0 || round.State == FINISHED {
 			return
 		}
-		targetPlayer := &round.Players[round.getRandomAliveNonBotPlayerId()]
+		rid := round.getRandomAliveNonBotPlayerId()
+		if rid == -1 {
+			continue
+		}
+
+		targetPlayer := &round.Players[rid]
 		allPlayersExceptMeAndTarget := round.getPlayersExcept([]Player{*targetPlayer, *player})
 		allPlayersExceptMe := append(allPlayersExceptMeAndTarget, targetPlayer)
 
