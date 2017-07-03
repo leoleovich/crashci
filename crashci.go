@@ -131,14 +131,30 @@ func getAcid(fileName string) ([]byte, error) {
 
 func getPlayerData(conn net.Conn, splash []byte) (Player, error) {
 	// Get data of player and return the structure
-	conn.Write(clear)
-	conn.Write(home)
-	conn.Write(splash)
-	conn.Write(middle)
+	_, err := conn.Write(clear)
+	if err != nil {
+		return Player{}, errors.New("Communication error")
+	}
+	_, err = conn.Write(home)
+	if err != nil {
+		return Player{}, errors.New("Communication error")
+	}
+	_, err = conn.Write(splash)
+	if err != nil {
+		return Player{}, errors.New("Communication error")
+	}
+	_, err = conn.Write(middle)
+	if err != nil {
+		return Player{}, errors.New("Communication error")
+	}
 
 	io := bufio.NewReader(conn)
 
-	line, _ := io.ReadString('\n')
+	line, err := io.ReadString('\n')
+	if err != nil {
+		return Player{}, errors.New("Communication error")
+	}
+
 	name := strings.Replace(strings.Replace(line, "\n", "", -1), "\r", "", -1)
 	if name == "" {
 		return Player{}, errors.New("Empty name")
