@@ -501,8 +501,7 @@ func (player *Player) checkSpeed(round *Round) {
 
 func (player *Player) checkHealth(round *Round) {
 	for {
-		if player.Health <= 0 || round.State == FINISHED {
-			round.State = FINISHED
+		if player.Health <= 0 {
 			player.Health = 0
 			return
 		}
