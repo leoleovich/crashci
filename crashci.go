@@ -223,7 +223,7 @@ func main() {
 	// Make random unique
 	rand.Seed(time.Now().Unix())
 	var logFile, acidPath string
-	var port int
+	var port, users int
 
 	flag.StringVar(&logFile, "l", "/var/log/race.log", "Log file")
 	flag.IntVar(&port, "p", 4242, "Port to listen")
@@ -254,6 +254,8 @@ func main() {
 
 	for {
 		conn, err := l.Accept()
+		users++
+		fmt.Println("In total", users, "users connected")
 		if err != nil {
 			conf.Log.Println("Failed to accept request", err)
 		}
