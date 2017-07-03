@@ -185,12 +185,14 @@ func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 func checkRoundRun(runningRoundChannel chan Round) {
 	for {
 		round := <-runningRoundChannel
-		for len(round.Players) < maxPlayersPerRound {
-			p := round.generateBot()
-			p.initPlayer(len(round.Players))
-			round.Players = append(round.Players, p)
+		if len(round.Players) > 0 {
+			for len(round.Players) < maxPlayersPerRound {
+				p := round.generateBot()
+				p.initPlayer(len(round.Players))
+				round.Players = append(round.Players, p)
+			}
+			go round.start()
 		}
-		go round.start()
 	}
 }
 

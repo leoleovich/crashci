@@ -129,6 +129,7 @@ func (round *Round) over() {
 	round.writeToAllPlayers([]byte("Time is out\n"), false)
 	for _, player := range round.Players {
 		if player.Bot {
+			player.Health = 0
 			continue
 		}
 		player.Conn.Close()
