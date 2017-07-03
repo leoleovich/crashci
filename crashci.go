@@ -11,8 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
-	//_ "net/http/pprof"
-	//"net/http"
+	_ "net/http/pprof"
+	"net/http"
 )
 
 const framesPerSecond = 8
@@ -240,10 +240,11 @@ func prepare(conn net.Conn, splash []byte, compileRoundChannel chan Round) {
 }
 
 func main() {
-	/* Enable profile
+	//Enable profile
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()*/
+	}()
+
 	// Make random unique
 	rand.Seed(time.Now().Unix())
 	var logFile, acidPath string
