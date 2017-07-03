@@ -90,7 +90,6 @@ func (round *Round) gameLogic() {
 }
 
 func (round *Round) checkGameOver(activeFrameBuffer Symbols) {
-	fmt.Println(round.Id, "checkGameOver")
 	humans := 0
 	deadHumans := 0
 	deadPlayers := 0
@@ -138,7 +137,6 @@ func (round *Round) over() {
 }
 
 func (round *Round) writeToAllPlayers(message []byte, clean bool) {
-	fmt.Println(round.Id, "writeToAllPlayers")
 	for i := range round.Players {
 		if round.Players[i].Bot {
 			continue
@@ -158,7 +156,6 @@ func (round *Round) applyNames(lineBetweenPlayersInBar int) {
 }
 
 func (round *Round) applyBonus(activeFrameBuffer []Symbol) {
-	fmt.Println(round.Id, "applyBonus")
 	if round.State == STARTING {
 		return
 	}
@@ -172,7 +169,6 @@ func (round *Round) applyBonus(activeFrameBuffer []Symbol) {
 }
 
 func (round *Round) applyBombs(activeFrameBuffer []Symbol, lineBetweenPlayersInBar int) {
-	fmt.Println(round.Id, "applyBombs")
 	if round.State == STARTING {
 		return
 	}
@@ -185,7 +181,6 @@ func (round *Round) applyBombs(activeFrameBuffer []Symbol, lineBetweenPlayersInB
 }
 
 func (round *Round) applyUserData(activeFrameBuffer []Symbol, lineBetweenPlayersInBar int) {
-	fmt.Println(round.Id, "applyUserData")
 	for num, player := range round.Players {
 		// Apply health
 		health := []byte(fmt.Sprintf("Health: %3d", player.Health))
@@ -204,7 +199,6 @@ func (round *Round) applyUserData(activeFrameBuffer []Symbol, lineBetweenPlayers
 }
 
 func (round *Round) applyGetReady(activeFrameBuffer []Symbol, getReadyCounter *int) {
-	fmt.Println(round.Id, "applyGetReady")
 	if round.State == STARTING {
 		getReady := "GET READY!"
 		if *getReadyCounter == 0 {
@@ -226,7 +220,6 @@ func (round *Round) applyGetReady(activeFrameBuffer []Symbol, getReadyCounter *i
 }
 
 func (round *Round) applyCars(activeMap []Symbol) {
-	fmt.Println(round.Id, "applyCars")
 	// Do not care about errors with moving away from slice
 	defer func() {
 		recover()
@@ -264,7 +257,7 @@ func (round *Round) applyCars(activeMap []Symbol) {
 }
 
 // We start round only if more than 0 player is presented
-func (round Round) start() {
+func (round *Round) start() {
 	lineBetweenPlayersInBar := mapHeight / len(round.Players)
 	getReadyCounter := getReadyPause / framesPerSecond
 
