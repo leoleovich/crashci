@@ -9,7 +9,7 @@ import (
 
 type Round struct {
 	Players         []Player
-	State           int
+	Id, State       int
 	LastStateChange time.Time
 	Bonus           Point
 	Bombs           map[Point]bool
@@ -113,7 +113,7 @@ func (round *Round) checkGameOver(activeFrameBuffer Symbols) {
 	secondsLeft := round.LastStateChange.Unix() + maxRoundRunningTimeSec - time.Now().Unix()
 	if humans == deadHumans || maxPlayersPerRound-deadPlayers == 1 || secondsLeft <= 0 {
 		round.State = FINISHED
-		fmt.Println("Round has changed to the state FINISHED")
+		fmt.Println(round.Id, "Round has changed to the state FINISHED")
 		if maxPlayersPerRound-deadPlayers == 1 {
 			winnerStr := "THE WINNER IS " + winnersName + "!!!"
 			for i, char := range []byte(winnerStr) {
@@ -212,7 +212,7 @@ func (round *Round) applyGetReady(activeFrameBuffer []Symbol, getReadyCounter *i
 	if round.State == STARTING {
 		getReady := "GET READY!"
 		if *getReadyCounter == 0 {
-			fmt.Println("Round has changed to the state RUNNING")
+			fmt.Println(round.Id, "Round has changed to the state RUNNING")
 			round.State = RUNNING
 		} else if *getReadyCounter <= framesPerSecond*1 {
 			getReady += " 1"

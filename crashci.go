@@ -154,18 +154,18 @@ func checkRoundReady(compileRoundChannel, runningRoundChannel chan Round) {
 	for {
 		fmt.Println("compile/waiting rounds:", len(compileRoundChannel))
 		r := <-compileRoundChannel
-		fmt.Println("players in round:", len(r.Players))
+		fmt.Println(r.Id, "players in round:", len(r.Players))
 
 		if len(r.Players) == maxPlayersPerRound ||
 			(r.State == WAITING && r.LastStateChange.Add(maxRoundWaitingTimeSec*time.Second).Before(time.Now())) {
 			// We are starting round if it is fully booked or waiting time is expired
-			fmt.Println("Round has changed to the state STARTING")
+			fmt.Println(r.Id, "Round has changed to the state STARTING")
 			r.State = STARTING
 			r.LastStateChange = time.Now()
 			runningRoundChannel <- r
 		} else if len(r.Players) >= minPlayersPerRound {
 			if r.State == COMPILING {
-				fmt.Println("Round has changed to the state WAITING")
+				fmt.Println(r.Id, "Round has changed to the state WAITING")
 				r.State = WAITING
 				r.LastStateChange = time.Now()
 			} else if r.State == WAITING {

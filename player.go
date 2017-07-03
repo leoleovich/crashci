@@ -88,7 +88,7 @@ func (p *Player) checkBestRoundForPlayer(compileRoundChannel chan Round) {
 
 	if !foundRoundForUser {
 		// We need a new round
-		r := Round{State: COMPILING, FrameBuffer: make([]Symbol, mapWidth*mapHeight), Bonus: Point{-1, -1}, Bombs: make(map[Point]bool)}
+		r := Round{Id: rand.Int(), State: COMPILING, FrameBuffer: make([]Symbol, mapWidth*mapHeight), Bonus: Point{-1, -1}, Bombs: make(map[Point]bool)}
 		p.initPlayer(len(r.Players))
 		r.Players = append(r.Players, *p)
 		compileRoundChannel <- r
