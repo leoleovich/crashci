@@ -65,14 +65,15 @@ func (round *Round) getPlayersExcept(exceptions []Player) []*Player {
 	return rest
 }
 
-func (round *Round) getRandomNonBotPlayerId() int {
-	for {
-		randId := rand.Intn(len(round.Players))
-		targetPlayer := round.Players[randId]
-		if targetPlayer.Health > 0 && !targetPlayer.Bot {
-			return randId
+func (round *Round) getRandomAliveNonBotPlayerId() int {
+	var alivePlayer []int
+
+	for i := range round.Players {
+		if round.Players[i].Health > 0 && !round.Players[i].Bot {
+			alivePlayer = append(alivePlayer, i)
 		}
 	}
+	return rand.Intn(len(alivePlayer))
 }
 
 func (round *Round) gameLogic() {

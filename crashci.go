@@ -8,11 +8,11 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strings"
 	"time"
-	_ "net/http/pprof"
-	"net/http"
 )
 
 const framesPerSecond = 8
