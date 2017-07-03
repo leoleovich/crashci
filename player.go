@@ -238,6 +238,9 @@ func (player *Player) navigateBot(myCenter, targetCenter *Point, restPlayers []*
 
 func (player *Player) moveBot(round *Round) {
 	for {
+		if player.Health <= 0 || round.State == FINISHED {
+			return
+		}
 		targetPlayer := &round.Players[round.getRandomNonBotPlayerId()]
 		allPlayersExceptMeAndTarget := round.getPlayersExcept([]Player{*targetPlayer, *player})
 		allPlayersExceptMe := append(allPlayersExceptMeAndTarget, targetPlayer)
