@@ -250,7 +250,7 @@ func (player *Player) moveBot(round *Round) {
 		}
 		targetCenter := &Point{}
 		for i := 0; i < 20; i++ {
-			if round.State == FINISHED {
+			if round.State == FINISHED || player.Health <= 0 {
 				return
 			} else if round.State == RUNNING {
 				// Check if BOT is throwing the bomb

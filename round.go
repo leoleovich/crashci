@@ -144,7 +144,11 @@ func (round *Round) writeToAllPlayers(message []byte, clean bool) {
 
 		go func(message []byte, player Player, clean bool) {
 			if clean {
-				player.Conn.Write(clear)
+				_, err := player.Conn.Write(clear)
+				if err != nil {
+					// Kick user if connection got lost
+					player.Health = 0
+				}
 			}
 			player.Conn.Write(home)
 			player.Conn.Write(message)
@@ -262,6 +266,7 @@ func (round *Round) applyCars(activeMap []Symbol) {
 	}
 }
 
+// We start round only if more than 0 player is presented
 func (round Round) start() {
 	lineBetweenPlayersInBar := mapHeight / len(round.Players)
 	getReadyCounter := getReadyPause / framesPerSecond
