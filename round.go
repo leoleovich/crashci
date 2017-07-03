@@ -73,7 +73,7 @@ func (round *Round) getRandomAliveNonBotPlayerId() int {
 			alivePlayer = append(alivePlayer, i)
 		}
 	}
-	return rand.Intn(len(alivePlayer))
+	return alivePlayer[rand.Intn(len(alivePlayer))]
 }
 
 func (round *Round) gameLogic() {
