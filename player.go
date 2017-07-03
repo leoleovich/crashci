@@ -550,3 +550,24 @@ func (player *Player) checkBomb(round *Round) {
 		time.Sleep(1 % framesPerSecond * 100 * time.Millisecond)
 	}
 }
+
+func (player *Player) writeToThePlayer(message []byte, clean bool) {
+	if clean {
+		_, err := player.Conn.Write(clear)
+		if err != nil {
+			// Kick user if connection got lost
+			player.Health = 0
+			return
+		}
+	}
+	_, err := player.Conn.Write(home)
+	if err != nil {
+		player.Health = 0
+		return
+	}
+	_, err = player.Conn.Write(message)
+	if err != nil {
+		player.Health = 0
+		return
+	}
+}
